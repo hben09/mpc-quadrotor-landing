@@ -14,7 +14,7 @@ CMD_DT = 0.05   # 20 Hz command update rate
 ROLL_STEP = 0.01
 PITCH_STEP = 0.01
 YAW_STEP = 0.01
-THRUST_STEP = 0.01jksdhfadshklh
+THRUST_STEP = 0.01
 
 ROLL_LIMIT = 0.30
 PITCH_LIMIT = 0.30
