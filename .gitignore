@@ -6,3 +6,4 @@ install/
 log/
 *.csv
 .DS_Store
+.venv/
