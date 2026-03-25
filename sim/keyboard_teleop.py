@@ -1,8 +1,9 @@
 """
 Manual keyboard control via CoppeliaSim ZMQ RemoteAPI.
 
-Sends PWM values (1000-2000) matching the Betaflight angle mode interface
-used by the Lua flight controller.
+Uses pynput for proper keydown/keyup detection — no terminal key repeat
+issues. Sends PWM values (1000-2000) matching the Betaflight angle mode
+interface used by the Lua flight controller.
 
 Keyboard mapping:
     A / D : roll  - / +
@@ -12,31 +13,28 @@ Keyboard mapping:
 
     Space : center roll/pitch/yaw (1500)
     Z     : zero thrust (1000)
-    X     : exit
+    Esc   : exit
 """
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
+from pynput import keyboard
 import time
-import sys
-import tty
-import termios
-import select
+import threading
 
 
 # =========================
 # PWM settings
 # =========================
-CMD_DT = 0.05   # 20 Hz command update rate
+CMD_DT = 0.05          # 20 Hz command update rate
 
-PWM_STEP = 25          # PWM increment per keypress (roll/pitch/yaw)
-THRUST_STEP = 5        # finer throttle control near hover
+RAMP_RATE = 15         # PWM change per cycle while key held (15 * 20Hz = 300 PWM/s)
+THRUST_RATE = 5        # finer throttle ramp
+DECAY_RATE = 0.15      # roll/pitch/yaw decay toward center when key released
 
 PWM_CENTER = 1500      # neutral for roll/pitch/yaw
 PWM_MIN = 1000
 PWM_MAX = 2000
 THRUST_IDLE = 1000
-
-DECAY_RATE = 0.15      # roll/pitch/yaw decay toward center when key released
 
 # Ground platform speed
 GROUND_V = -2.0
@@ -55,65 +53,39 @@ def decay_toward_center(val, center, rate):
     return center + diff
 
 
-def read_keyboard(roll, pitch, yaw, thrust):
-    """Read keyboard and update PWM commands.
+class KeyState:
+    """Thread-safe tracking of currently pressed keys via pynput."""
 
-    Roll/pitch/yaw ramp while held, decay to 1500 when released.
-    Thrust is persistent (only R/F/Z change it).
-    """
-    exit_flag = False
-    roll_active = False
-    pitch_active = False
-    yaw_active = False
+    def __init__(self):
+        self._pressed = set()
+        self._lock = threading.Lock()
+        self.exit_flag = False
 
-    while select.select([sys.stdin], [], [], 0)[0]:
-        key = sys.stdin.read(1).lower()
+    def on_press(self, key):
+        try:
+            k = key.char
+        except AttributeError:
+            k = key
+        with self._lock:
+            self._pressed.add(k)
+        if key == keyboard.Key.esc:
+            self.exit_flag = True
 
-        if key == 'a':
-            roll -= PWM_STEP
-            roll_active = True
-        elif key == 'd':
-            roll += PWM_STEP
-            roll_active = True
-        elif key == 'w':
-            pitch += PWM_STEP
-            pitch_active = True
-        elif key == 's':
-            pitch -= PWM_STEP
-            pitch_active = True
-        elif key == 'q':
-            yaw += PWM_STEP
-            yaw_active = True
-        elif key == 'e':
-            yaw -= PWM_STEP
-            yaw_active = True
-        elif key == 'r':
-            thrust += THRUST_STEP
-        elif key == 'f':
-            thrust -= THRUST_STEP
-        elif key == ' ':
-            roll = PWM_CENTER
-            pitch = PWM_CENTER
-            yaw = PWM_CENTER
-        elif key == 'z':
-            thrust = THRUST_IDLE
-        elif key == 'x':
-            exit_flag = True
+    def on_release(self, key):
+        try:
+            k = key.char
+        except AttributeError:
+            k = key
+        with self._lock:
+            self._pressed.discard(k)
 
-    # Decay roll/pitch/yaw toward center when not actively pressed
-    if not roll_active:
-        roll = decay_toward_center(roll, PWM_CENTER, DECAY_RATE)
-    if not pitch_active:
-        pitch = decay_toward_center(pitch, PWM_CENTER, DECAY_RATE)
-    if not yaw_active:
-        yaw = decay_toward_center(yaw, PWM_CENTER, DECAY_RATE)
+    def is_pressed(self, char):
+        with self._lock:
+            return char in self._pressed
 
-    roll = clamp(roll, PWM_MIN, PWM_MAX)
-    pitch = clamp(pitch, PWM_MIN, PWM_MAX)
-    yaw = clamp(yaw, PWM_MIN, PWM_MAX)
-    thrust = clamp(thrust, PWM_MIN, PWM_MAX)
-
-    return roll, pitch, yaw, thrust, exit_flag
+    def is_any_pressed(self, *chars):
+        with self._lock:
+            return any(c in self._pressed for c in chars)
 
 
 def send_commands(sim, roll, pitch, yaw, thrust):
@@ -139,6 +111,10 @@ def main():
     yaw = PWM_CENTER
     thrust = THRUST_IDLE
 
+    keys = KeyState()
+    listener = keyboard.Listener(on_press=keys.on_press, on_release=keys.on_release)
+    listener.start()
+
     print("==========================================")
     print("Manual Drone Control (Betaflight PWM Mode)")
     print("==========================================")
@@ -148,24 +124,60 @@ def main():
     print("R / F : thrust + / -")
     print("Space : center roll/pitch/yaw (1500)")
     print("Z     : zero thrust (1000)")
-    print("X     : exit")
-    print(f"PWM range: {PWM_MIN}-{PWM_MAX}, step: {PWM_STEP}")
+    print("Esc   : exit")
+    print(f"PWM range: {PWM_MIN}-{PWM_MAX}")
     print("==========================================")
 
     sim.startSimulation()
     time.sleep(0.2)
 
-    old_settings = termios.tcgetattr(sys.stdin)
-    tty.setcbreak(sys.stdin.fileno())
-
     try:
-        while sim.getSimulationState() != sim.simulation_stopped:
-            roll, pitch, yaw, thrust, exit_flag = read_keyboard(
-                roll, pitch, yaw, thrust
-            )
+        while sim.getSimulationState() != sim.simulation_stopped and not keys.exit_flag:
+            # Roll: A/D
+            if keys.is_pressed('a'):
+                roll -= RAMP_RATE
+            elif keys.is_pressed('d'):
+                roll += RAMP_RATE
+            else:
+                roll = decay_toward_center(roll, PWM_CENTER, DECAY_RATE)
 
-            if exit_flag:
-                break
+            # Pitch: W/S
+            if keys.is_pressed('w'):
+                pitch += RAMP_RATE
+            elif keys.is_pressed('s'):
+                pitch -= RAMP_RATE
+            else:
+                pitch = decay_toward_center(pitch, PWM_CENTER, DECAY_RATE)
+
+            # Yaw: Q/E
+            if keys.is_pressed('q'):
+                yaw += RAMP_RATE
+            elif keys.is_pressed('e'):
+                yaw -= RAMP_RATE
+            else:
+                yaw = decay_toward_center(yaw, PWM_CENTER, DECAY_RATE)
+
+            # Thrust: R/F (persistent, no decay)
+            if keys.is_pressed('r'):
+                thrust += THRUST_RATE
+            elif keys.is_pressed('f'):
+                thrust -= THRUST_RATE
+
+            # Space: center roll/pitch/yaw
+            if keys.is_pressed(' '):
+                roll = PWM_CENTER
+                pitch = PWM_CENTER
+                yaw = PWM_CENTER
+
+            # Z: zero thrust
+            if keys.is_pressed('z'):
+                thrust = THRUST_IDLE
+
+            # Clamp
+            roll = clamp(roll, PWM_MIN, PWM_MAX)
+            pitch = clamp(pitch, PWM_MIN, PWM_MAX)
+            yaw = clamp(yaw, PWM_MIN, PWM_MAX)
+            thrust = clamp(thrust, PWM_MIN, PWM_MAX)
 
             send_commands(sim, roll, pitch, yaw, thrust)
 
@@ -183,8 +195,8 @@ def main():
             time.sleep(CMD_DT)
 
     finally:
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
         print("\nStopping simulation...")
+        listener.stop()
         reset_commands(sim)
         time.sleep(0.1)
         sim.stopSimulation()
