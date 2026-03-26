@@ -1,0 +1,12 @@
+[project]
+name = "mpc-landing"
+version = "0.1.0"
+description = "MPC-based autonomous quadrotor landing system"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy",
+    "cvxpy",
+    "scipy",
+    "pyserial",
+    "paho-mqtt",
+]

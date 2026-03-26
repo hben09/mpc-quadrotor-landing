@@ -13,12 +13,12 @@ from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Joy
 from scipy.spatial.transform import Rotation as R
 
-from mpc_landing.crsf import (
+from crsf import (
     pwm_to_crsf, build_frame, crsf_validate_frame,
     handle_telemetry_packet,
 )
-from mpc_landing.boundary import check_boundary
-from mpc_landing.pid import PIDController
+from boundary import check_boundary
+from pid import PIDController
 
 import serial
 
