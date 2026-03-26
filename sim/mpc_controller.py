@@ -319,6 +319,10 @@ def main():
 
             time.sleep(CONTROL_DT)
 
+            # Ground platform
+            sim.setFloatSignal('ground_v', 0.5)
+
+
     except KeyboardInterrupt:
         print("\n\nStopping...")
     finally:
