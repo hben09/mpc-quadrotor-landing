@@ -1,10 +1,10 @@
 sim=require'sim'
 
-function sysCall_init() 
+function sysCall_init()
     particlesAreVisible=true
     simulateParticles=true
     fakeShadow=true
-    
+
     particleCountPerSecond=430
     particleSize=0.005
     particleDensity=8500
@@ -12,10 +12,27 @@ function sysCall_init()
     particleLifeTime=0.5
     maxParticleCount=50
 
-    -- Keep target only for vertical control:
-    targetObj=sim.getObject('../target')
-    sim.setObjectParent(targetObj,-1,true)
+    -------------------------------------------------
+    -- Betaflight angle mode parameters
+    -------------------------------------------------
+    -- Original hover particle velocity was 5.45
+    -- PWM 1500 (50%) -> 5.45, PWM 2000 (100%) -> 10.9
+    max_thrust_vel=10.9
 
+    -- Max commanded tilt (rad) — matches original keyboard range ~0.30
+    max_angle=0.30
+
+    -- Max yaw command — matches original keyboard range ~0.30
+    max_yaw_cmd=0.30
+
+    -- Linear drag coefficient (simulates air resistance)
+    -- At full throttle, excess thrust ≈ weight (2:1 TWR), so excess force ≈ mg ≈ 0.005 N
+    -- For terminal velocity ~3 m/s: kd = 0.005/3 ≈ 0.0017
+    drag_kd=1.0
+
+    -------------------------------------------------
+    -- Object handles
+    -------------------------------------------------
     d=sim.getObject('../base')
     heli=sim.getObject('..')
 
@@ -25,8 +42,6 @@ function sysCall_init()
 
     local ttype=sim.particle_roughspheres
                + sim.particle_cyclic
-               + sim.particle_respondable1to4
-               + sim.particle_respondable5to8
                + sim.particle_ignoresgravity
 
     if not particlesAreVisible then
@@ -49,29 +64,21 @@ function sysCall_init()
         end
     end
 
-    -- Vertical control parameters (unchanged):
-    pParam=2
-    iParam=0
-    dParam=0
-    vParam=-2
-
-    cumul=0
-    lastE=0
-
-    -- Horizontal control memory:
-    pAlphaE=0
-    pBetaE=0
-
-    -- External command signals from Python:
+    -- External command signals (PWM 1000-2000)
     sigRoll='cmd_roll'
     sigPitch='cmd_pitch'
     sigYaw='cmd_yaw'
     sigThrust='cmd_thrust'
 
-    cmdRoll=0
-    cmdPitch=0
-    cmdYaw=0
-    cmdThrust=0
+    -- Default PWM values (neutral/idle)
+    cmdRollPWM=1500
+    cmdPitchPWM=1500
+    cmdYawPWM=1500
+    cmdThrustPWM=1000
+
+    -- Horizontal control memory (from original):
+    pAlphaE=0
+    pBetaE=0
 
     if (fakeShadow) then
         shadowCont=sim.addDrawingObject(
@@ -85,16 +92,16 @@ function sysCall_init()
     end
 end
 
-function sysCall_cleanup() 
+function sysCall_cleanup()
     if shadowCont then
         sim.removeDrawingObject(shadowCont)
     end
     for i=1,#particleObjects,1 do
         sim.removeParticleObject(particleObjects[i])
     end
-end 
+end
 
-function sysCall_actuation() 
+function sysCall_actuation()
     local pos=sim.getObjectPosition(d)
 
     if (fakeShadow) then
@@ -102,33 +109,38 @@ function sysCall_actuation()
         sim.addDrawingObjectItem(shadowCont,itemData)
     end
 
-    -- Read external commands from Python:
+    -------------------------------------------------
+    -- Read PWM commands from Python
+    -------------------------------------------------
     local r=sim.getFloatSignal(sigRoll)
     local p=sim.getFloatSignal(sigPitch)
     local y=sim.getFloatSignal(sigYaw)
     local tCmd=sim.getFloatSignal(sigThrust)
 
-    if r~=nil then cmdRoll=r end
-    if p~=nil then cmdPitch=p end
-    if y~=nil then cmdYaw=y end
-    if tCmd~=nil then cmdThrust=tCmd end
-    
-    -------------------------------------------------
-    -- Vertical control (unchanged)
-    -------------------------------------------------
-    local targetPos=sim.getObjectPosition(targetObj)
-    pos=sim.getObjectPosition(d)
-    local l=sim.getVelocity(heli)
+    if r~=nil then cmdRollPWM=r end
+    if p~=nil then cmdPitchPWM=p end
+    if y~=nil then cmdYawPWM=y end
+    if tCmd~=nil then cmdThrustPWM=tCmd end
 
-    local e=(targetPos[3]-pos[3])
-    cumul=cumul+e
-    local pv=pParam*e
-    local thrust=5.45+pv+iParam*cumul+dParam*(e-lastE)+l[3]*vParam + cmdThrust
-    lastE=e
-    
     -------------------------------------------------
-    -- Horizontal control
-    -- Replace target-position tracking with roll/pitch commands
+    -- Convert PWM to internal commands
+    -------------------------------------------------
+    -- Thrust: PWM 1000->0, 1500->5.45 (hover), 2000->10.9
+    local thrust_frac=(cmdThrustPWM-1000)/1000
+    if thrust_frac<0 then thrust_frac=0 end
+    if thrust_frac>1 then thrust_frac=1 end
+    local thrust=thrust_frac*max_thrust_vel
+
+    -- Roll/pitch: PWM 1500->0, range +-max_angle
+    local cmdRoll=(cmdRollPWM-1500)/500*max_angle
+    local cmdPitch=(cmdPitchPWM-1500)/500*max_angle
+
+    -- Yaw: PWM 1500->0, range +-max_yaw_cmd
+    local cmdYaw=(cmdYawPWM-1500)/500*max_yaw_cmd
+
+    -------------------------------------------------
+    -- Horizontal control (ORIGINAL gains and method)
+    -- Uses body-frame matrix for attitude measurement
     -------------------------------------------------
     local m=sim.getObjectMatrix(d)
 
@@ -138,34 +150,58 @@ function sysCall_actuation()
     local vy={0,1,0}
     vy=sim.multiplyVector(m,vy)
 
-    -- Roll channel:
+    -- Roll channel (original: P=0.25, D=2.1):
     local alphaE=(vy[3]-m[12]) - cmdRoll
     local alphaCorr=0.25*alphaE+2.1*(alphaE-pAlphaE)
 
-    -- Pitch channel:
+    -- Pitch channel (original: P=0.25, D=2.1):
     local betaE=(vx[3]-m[12]) + cmdPitch
     local betaCorr=-0.25*betaE-2.1*(betaE-pBetaE)
 
     pAlphaE=alphaE
     pBetaE=betaE
-    
+
     -------------------------------------------------
-    -- Rotational control
-    -- cmdYaw is treated as yaw control input
-    -- add yaw-rate damping to suppress self-spin
+    -- Yaw control (ORIGINAL: cmdYaw + 0.5*yawRate damping)
     -------------------------------------------------
     local linVel, angVel=sim.getVelocity(heli)
     local yawRate=angVel[3]
-    local rotCorr=cmdYaw+0.2*yawRate
-    
+    local rotCorr=cmdYaw+0.5*yawRate
+
     -------------------------------------------------
-    -- Motor mixing
+    -- Air resistance (linear drag) — split across 4 propeller respondables
     -------------------------------------------------
-    handlePropeller(1,thrust*(1-alphaCorr+betaCorr+rotCorr))
-    handlePropeller(2,thrust*(1-alphaCorr-betaCorr-rotCorr))
-    handlePropeller(3,thrust*(1+alphaCorr-betaCorr+rotCorr))
-    handlePropeller(4,thrust*(1+alphaCorr+betaCorr-rotCorr))
-end 
+    local dragPerMotor={-drag_kd*linVel[1]/4,-drag_kd*linVel[2]/4,-drag_kd*linVel[3]/4}
+    for i=1,4 do
+        sim.addForceAndTorque(propellerHandles[i],dragPerMotor,{0,0,0})
+    end
+
+    -------------------------------------------------
+    -- Motor mixing (ORIGINAL multiplicative)
+    -- Cutoff below PWM 1050 to prevent ground interaction
+    -------------------------------------------------
+    if cmdThrustPWM<1050 then
+        pAlphaE=0
+        pBetaE=0
+        handlePropeller(1,0)
+        handlePropeller(2,0)
+        handlePropeller(3,0)
+        handlePropeller(4,0)
+    else
+        handlePropeller(1,thrust*(1-alphaCorr+betaCorr+rotCorr))
+        handlePropeller(2,thrust*(1-alphaCorr-betaCorr-rotCorr))
+        handlePropeller(3,thrust*(1+alphaCorr-betaCorr+rotCorr))
+        handlePropeller(4,thrust*(1+alphaCorr+betaCorr-rotCorr))
+    end
+
+    -- DEBUG: log every 25 steps (~2Hz)
+    if debugCnt==nil then debugCnt=0 end
+    debugCnt=debugCnt+1
+    if debugCnt%25==0 and cmdThrustPWM>=1050 then
+        print(string.format("PWM=%d thr=%.2f pos_z=%.2f vel_z=%.2f drag_z=%.4f",
+            cmdThrustPWM, thrust, pos[3], linVel[3], -drag_kd*linVel[3]))
+    end
+end
 
 
 function handlePropeller(index,particleVelocity)
@@ -173,6 +209,11 @@ function handlePropeller(index,particleVelocity)
     local propellerJoint=jointHandles[index]
     local propeller=sim.getObjectParent(propellerRespondable)
     local particleObject=particleObjects[index]
+
+    -- Skip everything when motors are off: no particles, no forces, no joint spin
+    if particleVelocity<=0 then
+        return
+    end
 
     local maxParticleDeviation=math.tan(particleScatteringAngle*0.5*math.pi/180)*particleVelocity
     local notFullParticles=0
@@ -186,7 +227,7 @@ function handlePropeller(index,particleVelocity)
     local particleCnt=0
     local pos={0,0,0}
     local dir={0,0,1}
-    
+
     local requiredParticleCnt=particleCountPerSecond*ts+notFullParticles
     notFullParticles=requiredParticleCnt % 1
     requiredParticleCnt=math.floor(requiredParticleCnt)
