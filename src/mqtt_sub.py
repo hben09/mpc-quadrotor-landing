@@ -15,7 +15,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 
 def on_message(client, userdata, msg):
-    print(f"[{msg.topic}] {msg.payload.decode()}")
+    print(f"[{msg.topic}] {msg.payload.decode()}", flush=True)
 
 
 def main():
