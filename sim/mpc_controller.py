@@ -33,13 +33,16 @@ import sys
 import time
 import math
 import threading
+from pathlib import Path
 
 import numpy as np
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 from pynput import keyboard
 
-# Add src/ to path so we can import mpc and reference modules
-sys.path.insert(0, "../src")
+# Add src/ to path relative to this file so the script works from any cwd
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 from mpc import MPCController, MPCConfig
 from reference import static_reference, tracking_reference, landing_reference
 

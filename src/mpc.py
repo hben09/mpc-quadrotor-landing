@@ -28,7 +28,7 @@ class MPCConfig:
     Q_diag: list = field(default_factory=lambda: [10.0, 1.0, 10.0, 1.0, 10.0, 1.0])
 
     # Terminal cost weights (larger than Q to incentivize reaching target)
-    Qf_diag: list = field(default_factory=lambda: [100.0, 10.0, 100.0, 10.0, 100.0, 10.0])
+    Qf_diag: list = field(default_factory=lambda: [200.0, 20.0, 100.0, 10.0, 100.0, 10.0])
 
     # Input cost weights: [ax, ay, az]
     R_diag: list = field(default_factory=lambda: [1.0, 1.0, 1.0])

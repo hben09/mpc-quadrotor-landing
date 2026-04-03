@@ -24,9 +24,12 @@ Coordinate mapping (CoppeliaSim z-up -> MPC convention):
     sim y  ->  MPC pz  (horizontal 2)
 """
 
+import csv
+import json
 import sys
 import time
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -60,15 +63,17 @@ PWM_MAX = 2000
 HOVER_PWM = 1502  # empirically determined hover bias
 
 # Acceleration -> PWM gains (tuned empirically)
-K_PITCH = 25.0     # PWM/(m/s^2)
-K_ROLL = 25.0
+K_PITCH = 40.0     # PWM/(m/s^2)
+K_ROLL = 8.0
 K_THRUST = 10.0   # PWM/(m/s^2)
+MAX_TILT_PWM = 60  # max roll/pitch PWM offset from center (tuned empirically)
 
 # Tracking parameters
 HOVER_ALTITUDE = 0.5
 TRACKING_ALTITUDE = 0.2    # meters above ground bot in tracking mode
 GROUND_V_DEFAULT = 0.4     # default forward velocity signal for ground bot
 SHOW_TARGET_MARKER = True
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +99,9 @@ def mpc_accel_to_pwm(ax, ay, az):
     roll_pwm = PWM_CENTER - K_ROLL * az   # inverted sign for sim y-axis response
     yaw_pwm = PWM_CENTER
 
-    MAX_TILT = 60  # max roll/pitch PWM offset from center (tuned empirically)
     return (
-        clamp(roll_pwm, PWM_CENTER - MAX_TILT, PWM_CENTER + MAX_TILT),
-        clamp(pitch_pwm, PWM_CENTER - MAX_TILT, PWM_CENTER + MAX_TILT),
+        clamp(roll_pwm, PWM_CENTER - MAX_TILT_PWM, PWM_CENTER + MAX_TILT_PWM),
+        clamp(pitch_pwm, PWM_CENTER - MAX_TILT_PWM, PWM_CENTER + MAX_TILT_PWM),
         clamp(yaw_pwm, PWM_MIN, PWM_MAX),
         clamp(thrust_pwm, PWM_MIN, PWM_MAX),
     )
@@ -126,6 +130,98 @@ def read_ground_state(sim, ground_handle):
     }
 
 
+def _serialize_value(value):
+    if isinstance(value, (list, tuple, dict)):
+        return json.dumps(value)
+    return value
+
+
+def write_simulation_parameters(params_path, config):
+    """Write the fixed parameters used for this run."""
+    parameters = {
+        "script": Path(__file__).name,
+        "drone_name": DRONE_NAME,
+        "ground_name": GROUND_NAME,
+        "control_hz": CONTROL_HZ,
+        "control_dt": CONTROL_DT,
+        "pwm_center": PWM_CENTER,
+        "pwm_min": PWM_MIN,
+        "pwm_max": PWM_MAX,
+        "hover_pwm": HOVER_PWM,
+        "k_pitch": K_PITCH,
+        "k_roll": K_ROLL,
+        "k_thrust": K_THRUST,
+        "max_tilt_pwm": MAX_TILT_PWM,
+        "hover_altitude": HOVER_ALTITUDE,
+        "tracking_altitude": TRACKING_ALTITUDE,
+        "ground_v_default": GROUND_V_DEFAULT,
+        "show_target_marker": SHOW_TARGET_MARKER,
+        "mpc_dt": config.dt,
+        "mpc_horizon": config.horizon,
+        "mpc_q_diag": config.Q_diag,
+        "mpc_qf_diag": config.Qf_diag,
+        "mpc_r_diag": config.R_diag,
+        "mpc_a_max": config.a_max,
+        "mpc_v_max": config.v_max,
+    }
+
+    with params_path.open("w", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["parameter", "value"])
+        for name, value in parameters.items():
+            writer.writerow([name, _serialize_value(value)])
+
+
+def create_run_logs(config):
+    """Create CSV files for the run trace and simulation parameters."""
+    DATA_DIR.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    run_dir = DATA_DIR / f"run_{timestamp}"
+    run_dir.mkdir()
+    trace_path = run_dir / "simulation_trace.csv"
+    params_path = run_dir / "simulation_params.csv"
+
+    trace_file = trace_path.open("w", newline="")
+    trace_writer = csv.writer(trace_file)
+    trace_writer.writerow(
+        [
+            "time_s",
+            "phase",
+            "armed",
+            "key_r",
+            "key_f",
+            "key_t",
+            "key_l",
+            "key_h",
+            "drone_x",
+            "drone_y",
+            "drone_z",
+            "drone_vx",
+            "drone_vy",
+            "drone_vz",
+            "ground_x",
+            "ground_y",
+            "ground_z",
+            "ground_vx",
+            "ground_vy",
+            "ground_vz",
+            "target_x",
+            "target_y",
+            "target_z",
+            "ax_cmd",
+            "ay_cmd",
+            "az_cmd",
+            "roll_pwm",
+            "pitch_pwm",
+            "yaw_pwm",
+            "thrust_pwm",
+        ]
+    )
+
+    write_simulation_parameters(params_path, config)
+    return run_dir, trace_path, params_path, trace_file, trace_writer
+
+
 # ---------------------------------------------------------------------------
 # Keyboard input
 # ---------------------------------------------------------------------------
@@ -144,22 +240,22 @@ class KeyState:
 
     def on_press(self, key):
         try:
-            k = key.char
+            k = key.char.lower()
         except AttributeError:
             k = key
         with self._lock:
             self._pressed.add(k)
 
         if hasattr(key, "char"):
-            if key.char == "t":
+            if k == "t":
                 self.mode_request = "track"
-            elif key.char == "l":
+            elif k == "l":
                 self.mode_request = "land"
-            elif key.char == "h":
+            elif k == "h":
                 self.mode_request = "hover"
-            elif key.char == "r":
+            elif k == "r":
                 self.arm_request = "arm"
-            elif key.char == "f":
+            elif k == "f":
                 self.arm_request = "disarm"
 
         if key == keyboard.Key.esc:
@@ -167,7 +263,7 @@ class KeyState:
 
     def on_release(self, key):
         try:
-            k = key.char
+            k = key.char.lower()
         except AttributeError:
             k = key
         with self._lock:
@@ -177,6 +273,10 @@ class KeyState:
         req = self.mode_request
         self.mode_request = None
         return req
+
+    def pressed_snapshot(self):
+        with self._lock:
+            return set(self._pressed)
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +293,7 @@ def main():
     print(f"Found ground: {GROUND_NAME}")
 
     # MPC
-    config = MPCConfig(dt=CONTROL_DT, horizon=20)
+    config = MPCConfig(dt=CONTROL_DT, horizon=40)
     mpc = MPCController(config)
     N = config.horizon
     print(f"MPC: horizon={N}, dt={CONTROL_DT}s")
@@ -220,12 +320,18 @@ def main():
     phase = HOVER
     hover_target = None
     track_altitude = TRACKING_ALTITUDE
+    run_dir, trace_path, params_path, trace_file, trace_writer = create_run_logs(config)
+    sim_start_time = None
 
 
     sim.startSimulation()
     time.sleep(0.2)
+    sim_start_time = time.time()
     drone_pos0 = sim.getObjectPosition(drone_handle, sim.handle_world)
     hover_target = [drone_pos0[0], HOVER_ALTITUDE, drone_pos0[1]]
+    print(f"Saving run data to: {run_dir}")
+    print(f"Saving simulation trace to: {trace_path}")
+    print(f"Saving simulation parameters to: {params_path}")
 
     print("\n=== MPC Quadrotor Ground-Tracking Controller ===")
     print(f"Drone rises to {HOVER_ALTITUDE} m and holds position on start.")
@@ -328,6 +434,43 @@ def main():
                 thrust_pwm = PWM_MIN
                 send_commands(sim, roll_pwm, pitch_pwm, yaw_pwm, thrust_pwm)
 
+            pressed_keys = keys.pressed_snapshot()
+            trace_writer.writerow(
+                [
+                    time.time() - sim_start_time,
+                    phase,
+                    int(armed),
+                    int("r" in pressed_keys),
+                    int("f" in pressed_keys),
+                    int("t" in pressed_keys),
+                    int("l" in pressed_keys),
+                    int("h" in pressed_keys),
+                    drone_pos[0],
+                    drone_pos[1],
+                    drone_pos[2],
+                    drone_vel[0],
+                    drone_vel[1],
+                    drone_vel[2],
+                    ground_state["sim_pos"][0],
+                    ground_state["sim_pos"][1],
+                    ground_state["sim_pos"][2],
+                    ground_vel[0],
+                    ground_vel[1],
+                    ground_vel[2],
+                    target_pos[0],
+                    target_pos[2],
+                    target_pos[1],
+                    ax,
+                    ay,
+                    az,
+                    roll_pwm,
+                    pitch_pwm,
+                    yaw_pwm,
+                    thrust_pwm,
+                ]
+            )
+            trace_file.flush()
+
             # --- Logging ---
             step_count += 1
             if step_count % 5 == 0:
@@ -347,11 +490,15 @@ def main():
         print("\n\nStopping...")
     finally:
         listener.stop()
+        trace_file.close()
         send_commands(sim, PWM_CENTER, PWM_CENTER, PWM_CENTER, PWM_MIN)
         time.sleep(0.1)
         if target_marker != -1:
             sim.removeObject(target_marker)
         sim.stopSimulation()
+        print(f"Run data saved to: {run_dir}")
+        print(f"Simulation trace saved to: {trace_path}")
+        print(f"Simulation parameters saved to: {params_path}")
         print("\nSimulation stopped.")
 
 
