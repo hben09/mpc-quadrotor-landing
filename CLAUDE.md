@@ -51,4 +51,4 @@ sim/                  # CoppeliaSim simulation environment
 ## Key Conventions
 
 - Control loop: 50Hz (20ms period)
-- Crazyflie control interface: TBD (velocity setpoints, position setpoints, or attitude commands via cflib)
+- Crazyflie control interface: `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` — attitude commands via cflib
