@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-MPC-based autonomous quadrotor landing system. A drone (TinyWhoop Air65 on Betaflight) is controlled from a PC via ELRS wireless link, with state feedback from an OptiTrack motion capture system streamed over MQTT.
+MPC-based autonomous quadrotor landing system. A Crazyflie drone is controlled from a PC via Crazyradio 2.0, with state feedback from an OptiTrack motion capture system streamed over MQTT.
 
 ## Repository Structure
 
@@ -13,8 +13,8 @@ src/                  # Main control package
   pid.py              # PID baseline controller (currently active in supervisor)
   reference.py        # Reference trajectory generation (tracking, landing, static)
   boundary.py         # RASTIC arena boundary safety checker
-  crsf.py             # CRSF protocol encoding for ELRS TX module
-  mqtt_sub.py         # MQTT subscriber for drone (air65) and ground vehicle (limo777) poses
+  crsf.py             # (legacy, Air65) CRSF protocol encoding for ELRS TX module
+  mqtt_sub.py         # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
   mqtt_parser.py      # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
 
 sim/                  # CoppeliaSim simulation environment
@@ -26,11 +26,10 @@ sim/                  # CoppeliaSim simulation environment
 ## Architecture
 
 ### Control Pipeline
-1. **Drone pose** → OptiTrack → Motive → MQTT broker (`rasticvm.internal:1883`) → topic `rb/air65` → `mqtt_parser.py` → `MQTTRigidBody` (pos, euler, vel)
+1. **Drone pose** → OptiTrack → Motive → MQTT broker (`rasticvm.internal:1883`) → topic `rb/crazyflie` → `mqtt_parser.py` → `MQTTRigidBody` (pos, euler, vel)
 2. **Ground vehicle pose** → OptiTrack → Motive → MQTT broker → topic `rb/limo777` → `mqtt_parser.py` → `MQTTRigidBody` (pos, euler, vel)
-3. **Controller** (PID or MPC) computes desired roll, pitch, yaw, throttle as PWM (1000–2000 µs)
-4. **CRSF encoding** (`crsf.py`) packs into 26-byte frames
-5. **Serial** (pyserial, 115200 baud, `/dev/ttyACM0`) → ELRS TX module → drone's Betaflight FC
+3. **Controller** (PID or MPC) computes desired commands (control interface TBD)
+4. **cflib** → Crazyradio 2.0 → Crazyflie
 
 ### Current State
 - `supervisor.py` uses **PID** controller — MPC is implemented in `mpc.py` but not yet integrated
@@ -39,19 +38,17 @@ sim/                  # CoppeliaSim simulation environment
 
 ## Dependencies
 
-- **Python**: numpy, cvxpy, scipy, pyserial, paho-mqtt
+- **Python**: numpy, cvxpy, scipy, cflib, paho-mqtt
 - **Sim**: coppeliasim-zmqremoteapi-client (managed via uv in sim/)
 
 ## Hardware
 
-- Drone: TinyWhoop Air65 with Betaflight + ELRS receiver
-- ELRS TX module connected to PC via USB
+- Drone: Crazyflie 2.1 (Crazyflie firmware)
+- Crazyradio 2.0 USB dongle connected to PC
 - OptiTrack motion capture system (3 markers per drone)
 - RASTIC arena bounds: X [-4.5, 3.0], Y [0.0, 2.0], Z [-2.0, 3.0] meters
 
 ## Key Conventions
 
-- PWM range: 1000–2000 µs (1500 = center for roll/pitch/yaw, 1000 = zero throttle)
-- CRSF channel order: roll(0), pitch(1), throttle(2), yaw(3), arm(4), flight mode(5)
 - Control loop: 50Hz (20ms period)
-- Flight modes: ACRO (rate commands) or ANGLE/STAB (angle commands, self-leveling)
+- Crazyflie control interface: TBD (velocity setpoints, position setpoints, or attitude commands via cflib)
