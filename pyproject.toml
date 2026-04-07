@@ -1,0 +1,8 @@
+[project]
+name = "mpc-quadrotor-landing"
+version = "0.1.0"
+description = "MPC-based autonomous quadrotor landing system"
+requires-python = ">=3.13"
+
+[tool.uv.workspace]
+members = ["src", "sim"]
