@@ -83,6 +83,8 @@ def main():
                 time.sleep(0.02)
         finally:
             cf.commander.send_stop_setpoint()
+            cf.commander.send_notify_setpoint_stop()
+            time.sleep(0.1)
             listener.stop()
             print('\nMotors stopped.')
 
