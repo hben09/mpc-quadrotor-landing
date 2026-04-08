@@ -17,10 +17,9 @@ src/                  # Main control package
   mqtt_sub.py         # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
   mqtt_parser.py      # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
 
-sim/                  # CoppeliaSim simulation environment
-  keyboard_teleop.py  # Manual keyboard control via ZMQ RemoteAPI
-  my sim.ttt          # CoppeliaSim scene file
-  *.lua               # Drone and ground platform controller scripts
+sim/                  # Crazyflow simulation environment
+  teleop.py           # Keyboard teleoperation (attitude control, 500Hz, pynput)
+  old/                # Legacy CoppeliaSim scripts (archived)
 ```
 
 ## Architecture
@@ -39,7 +38,7 @@ sim/                  # CoppeliaSim simulation environment
 ## Dependencies
 
 - **Python**: numpy, cvxpy, scipy, cflib, paho-mqtt
-- **Sim**: coppeliasim-zmqremoteapi-client (managed via uv in sim/)
+- **Sim**: crazyflow (from GitHub, managed via uv in sim/), pynput
 
 ## Hardware
 
