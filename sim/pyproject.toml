@@ -1,11 +1,11 @@
 [project]
-name = "crazyflow-test"
+name = "sim"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Crazyflow simulation environment"
 requires-python = ">=3.13"
 dependencies = [
     "crazyflow",
+    "numpy",
     "pynput>=1.8.1",
 ]
 
