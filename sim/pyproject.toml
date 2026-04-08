@@ -5,8 +5,10 @@ description = "Crazyflow simulation environment"
 requires-python = ">=3.13"
 dependencies = [
     "crazyflow",
+    "cvxpy",
     "numpy",
     "pynput>=1.8.1",
+    "scipy",
 ]
 
 [tool.uv.sources]

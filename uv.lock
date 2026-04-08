@@ -1348,15 +1348,19 @@ version = "0.1.0"
 source = { editable = "sim" }
 dependencies = [
     { name = "crazyflow" },
+    { name = "cvxpy" },
     { name = "numpy" },
     { name = "pynput" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "crazyflow", git = "https://github.com/utiasDSL/crazyflow.git" },
+    { name = "cvxpy" },
     { name = "numpy" },
     { name = "pynput", specifier = ">=1.8.1" },
+    { name = "scipy" },
 ]
 
 [[package]]
