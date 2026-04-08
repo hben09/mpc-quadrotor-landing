@@ -5,10 +5,12 @@ description = "MPC-based autonomous quadrotor landing system"
 requires-python = ">=3.13"
 dependencies = [
     "sim",
+    "mpc-landing",
 ]
 
 [tool.uv.sources]
 sim = { workspace = true }
+mpc-landing = { workspace = true }
 
 [tool.uv.workspace]
 members = ["src", "sim"]

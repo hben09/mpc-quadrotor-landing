@@ -11,3 +11,6 @@ dependencies = [
     "paho-mqtt",
     "cflib",
 ]
+
+[tool.setuptools]
+py-modules = ["supervisor", "mpc", "pid", "reference", "boundary", "crsf", "mqtt_sub", "mqtt_parser"]

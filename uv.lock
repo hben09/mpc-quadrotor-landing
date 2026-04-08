@@ -669,7 +669,7 @@ wheels = [
 [[package]]
 name = "mpc-landing"
 version = "0.1.0"
-source = { virtual = "src" }
+source = { editable = "src" }
 dependencies = [
     { name = "cflib" },
     { name = "cvxpy" },
@@ -694,11 +694,15 @@ name = "mpc-quadrotor-landing"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "mpc-landing" },
     { name = "sim" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "sim", editable = "sim" }]
+requires-dist = [
+    { name = "mpc-landing", editable = "src" },
+    { name = "sim", editable = "sim" },
+]
 
 [[package]]
 name = "msgpack"
