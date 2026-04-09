@@ -73,6 +73,16 @@ All scripts are runnable via `uv run <command>`:
 - Control loop: 50Hz (20ms period)
 - Crazyflie control interface: `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` — attitude commands via cflib
 
+## Coordinate Systems
+
+| | Forward | Up | Lateral |
+|---|---|---|---|
+| **OptiTrack/Motive** | X | Y | Z |
+| **Crazyflow sim** | X | Z | Y |
+| **MPC state** [px, py, pz] | px | py | pz |
+
+OptiTrack and MPC use the same axis order (no swap needed). Crazyflow swaps Y/Z — see `cf_to_mpc_state()` in `sim/mpc_controller.py`.
+
 ## Sim vs Hardware Control Interface
 
 MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation to actuator commands differs between sim and hardware:
