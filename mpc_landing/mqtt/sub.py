@@ -7,7 +7,7 @@ from mpc_landing.mqtt.parser import RigidBodyTracker
 
 BROKER = "rasticvm.internal"
 PORT = 1883
-TOPIC = "rb/drone"
+TOPIC = "rb/crazyflie"
 
 tracker = RigidBodyTracker()
 
