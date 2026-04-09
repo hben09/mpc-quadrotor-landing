@@ -68,7 +68,7 @@ STEER_RATE = 2.0          # rad/s yaw rate at full steering input
 V_STOP = 0.01             # m/s, snap-to-zero threshold
 
 # Ground vehicle rendering
-BOX_HALF_EXTENTS = np.array([0.10, 0.07, 0.02])  # 20cm x 14cm x 4cm
+BOX_HALF_EXTENTS = np.array([0.20, 0.14, 0.04])  # 40cm x 28cm x 8cm
 BOX_COLOR = np.array([0.2, 0.6, 1.0, 0.9])       # light blue
 
 # Collision
