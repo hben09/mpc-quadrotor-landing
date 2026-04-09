@@ -63,6 +63,7 @@ All scripts are runnable via `uv run <command>`:
 - Crazyradio 2.0 USB dongle connected to PC
 - OptiTrack motion capture system (3 markers per drone)
 - RASTIC arena bounds: X [-4.5, 3.0], Y [0.0, 2.0], Z [-2.0, 3.0] meters
+- Hover thrust: ~35000 at full battery
 
 ## Key Conventions
 
