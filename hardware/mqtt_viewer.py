@@ -62,7 +62,7 @@ class TrackedState:
 # ---------------------------------------------------------------------------
 def mqtt_to_pyvista(pos):
     """MQTT [x, y, z] (x=forward, y=altitude, z=lateral) -> PyVista (z-up)."""
-    return (pos[0], pos[2], pos[1])
+    return (pos[0], -pos[2], pos[1])
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def build_arena_wireframe():
     b = ARENA_BOUNDS
     return pv.Box(bounds=[
         b['x_min'], b['x_max'],
-        b['z_min'], b['z_max'],
+        -b['z_max'], -b['z_min'],
         b['y_min'], b['y_max'],
     ])
 
@@ -115,7 +115,7 @@ def build_orientation_axes(pv_pos, rot_quat):
         mqtt_dir = R[:, i] * AXIS_LENGTH
         pv_endpoint = (
             pv_pos[0] + mqtt_dir[0],
-            pv_pos[1] + mqtt_dir[2],
+            pv_pos[1] - mqtt_dir[2],
             pv_pos[2] + mqtt_dir[1],
         )
         points.append(pv_endpoint)
