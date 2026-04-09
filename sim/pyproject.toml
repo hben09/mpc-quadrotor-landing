@@ -9,15 +9,17 @@ dependencies = [
     "mpc-landing",
     "numpy",
     "pynput>=1.8.1",
+    "pyvista",
     "scipy",
 ]
 
 [tool.setuptools]
-py-modules = ["mpc_controller", "mpc_controller_ground", "teleop"]
+py-modules = ["mpc_controller", "mpc_controller_ground", "teleop", "mpc_gui"]
 
 [project.scripts]
 sim-mpc = "mpc_controller:main"
 sim-mpc-ground = "mpc_controller_ground:main"
+sim-mpc-gui = "mpc_gui:main"
 sim-teleop = "teleop:main"
 
 [tool.uv.sources]
