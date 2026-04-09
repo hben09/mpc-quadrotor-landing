@@ -1,14 +1,25 @@
 [project]
 name = "sim"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Crazyflow simulation environment"
 requires-python = ">=3.13"
 dependencies = [
-    "coppeliasim-zmqremoteapi-client>=2.0.4",
-    "pynput>=1.7",
-    "numpy",
+    "crazyflow",
     "cvxpy",
+    "mpc-landing",
+    "numpy",
+    "pynput>=1.8.1",
     "scipy",
-    "matplotlib",
 ]
+
+[tool.setuptools]
+py-modules = ["mpc_controller", "mpc_controller_ground", "teleop"]
+
+[project.scripts]
+sim-mpc = "mpc_controller:main"
+sim-mpc-ground = "mpc_controller_ground:main"
+sim-teleop = "teleop:main"
+
+[tool.uv.sources]
+crazyflow = { git = "https://github.com/utiasDSL/crazyflow.git" }
+mpc-landing = { workspace = true }

@@ -7,3 +7,5 @@ log/
 *.csv
 .DS_Store
 .venv/
+.codex
+cache/

@@ -10,3 +10,10 @@ dependencies = [
     "pyserial",
     "paho-mqtt",
 ]
+
+[tool.setuptools]
+packages = ["mpc_landing", "mpc_landing.mqtt"]
+
+[tool.setuptools.package-dir]
+mpc_landing = "."
+"mpc_landing.mqtt" = "mqtt"

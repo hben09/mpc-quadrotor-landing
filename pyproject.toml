@@ -1,0 +1,18 @@
+[project]
+name = "mpc-quadrotor-landing"
+version = "0.1.0"
+description = "MPC-based autonomous quadrotor landing system"
+requires-python = ">=3.13"
+dependencies = [
+    "sim",
+    "mpc-landing",
+    "mpc-hardware",
+]
+
+[tool.uv.sources]
+sim = { workspace = true }
+mpc-landing = { workspace = true }
+mpc-hardware = { workspace = true }
+
+[tool.uv.workspace]
+members = ["mpc_landing", "sim", "hardware"]
