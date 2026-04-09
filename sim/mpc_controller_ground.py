@@ -266,6 +266,7 @@ def main():
     HOVER = "hover"
     TRACK = "track"
     LAND = "land"
+    LANDED = "landed"
     phase = HOVER
     hover_target = [0.0, HOVER_ALTITUDE, 0.0]
 
@@ -309,34 +310,42 @@ def main():
             # --- Update ground vehicle ---
             vehicle_state = vehicle.update(keys, CONTROL_DT)
 
-            # --- Build reference ---
-            if phase == HOVER:
-                ref = static_reference(hover_target, N, CONTROL_DT)
-            elif phase == TRACK:
-                drone_state = {
-                    "pos": [x0[0], x0[2], x0[4]],
-                    "vel": [x0[1], x0[3], x0[5]],
-                }
-                ref = tracking_reference(drone_state, vehicle_state, N, CONTROL_DT)
-            elif phase == LAND:
-                drone_state = {
-                    "pos": [x0[0], x0[2], x0[4]],
-                    "vel": [x0[1], x0[3], x0[5]],
-                }
-                ref = landing_reference(drone_state, vehicle_state, N, CONTROL_DT)
+            # --- Build reference & step ---
+            if phase == LANDED:
+                # Motors off — zero thrust, neutral attitude
+                cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
+                ax, ay, az = 0.0, 0.0, 0.0
+                attitude = np.array([0.0, 0.0, 0.0, 0.0])
+                sim.attitude_control(cmd)
+                sim.step(STEPS_PER_MPC)
+            else:
+                if phase == HOVER:
+                    ref = static_reference(hover_target, N, CONTROL_DT)
+                elif phase == TRACK:
+                    drone_state = {
+                        "pos": [x0[0], x0[2], x0[4]],
+                        "vel": [x0[1], x0[3], x0[5]],
+                    }
+                    ref = tracking_reference(drone_state, vehicle_state, N, CONTROL_DT)
+                elif phase == LAND:
+                    drone_state = {
+                        "pos": [x0[0], x0[2], x0[4]],
+                        "vel": [x0[1], x0[3], x0[5]],
+                    }
+                    ref = landing_reference(drone_state, vehicle_state, N, CONTROL_DT)
 
-            # --- Solve MPC ---
-            u_opt = mpc.compute(x0, ref)
-            ax, ay, az = u_opt
+                # --- Solve MPC ---
+                u_opt = mpc.compute(x0, ref)
+                ax, ay, az = u_opt
 
-            # --- Convert to attitude command ---
-            attitude = mpc_accel_to_attitude(ax, ay, az, mass, thrust_max)
-            cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
-            cmd[0, 0, :] = attitude
+                # --- Convert to attitude command ---
+                attitude = mpc_accel_to_attitude(ax, ay, az, mass, thrust_max)
+                cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
+                cmd[0, 0, :] = attitude
 
-            # --- Step sim (10 physics steps = 1 MPC step at 50Hz) ---
-            sim.attitude_control(cmd)
-            sim.step(STEPS_PER_MPC)
+                # --- Step sim (10 physics steps = 1 MPC step at 50Hz) ---
+                sim.attitude_control(cmd)
+                sim.step(STEPS_PER_MPC)
 
             # --- Collision: clamp drone onto vehicle platform ---
             drone_pos = np.array(sim.data.states.pos[0, 0])  # CF [x, y, z]
@@ -356,6 +365,9 @@ def main():
                 sim.data = sim.data.replace(
                     states=sim.data.states.replace(pos=new_pos, vel=new_vel)
                 )
+                if phase == LAND:
+                    phase = LANDED
+                    print("\n>>> LANDED — motors disarmed. Press H to take off again.")
 
             # --- Render ---
             step_count += 1
