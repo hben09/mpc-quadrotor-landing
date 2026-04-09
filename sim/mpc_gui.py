@@ -44,10 +44,10 @@ def cf_to_mpc_state(pos, vel):
     ])
 
 
-def mpc_accel_to_attitude(ax, ay, az, mass, thrust_max):
+def mpc_accel_to_attitude(ax, ay, az, mass, thrust_max, max_tilt=MAX_TILT):
     """MPC accelerations -> Crazyflow attitude command [roll, pitch, yaw, thrust]."""
-    pitch = np.clip(ax / G, -MAX_TILT, MAX_TILT)
-    roll = np.clip(-az / G, -MAX_TILT, MAX_TILT)
+    pitch = np.clip(ax / G, -max_tilt, max_tilt)
+    roll = np.clip(-az / G, -max_tilt, max_tilt)
     yaw = 0.0
     thrust = np.clip(mass * (G + ay), 0.0, thrust_max)
     return np.array([roll, pitch, yaw, thrust])
@@ -122,11 +122,14 @@ def main():
     mass = float(sim.data.params.mass[0, 0, 0])
     thrust_max = float(sim.data.controls.attitude.params.thrust_max) * 4
 
-    # --- MPC ---
+    # --- MPC (mutable — sliders rebuild it) ---
     config = MPCConfig(dt=CONTROL_DT, horizon=25)
-    mpc = MPCController(config)
+    mpc_state = {"mpc": MPCController(config), "config": config, "max_tilt": MAX_TILT}
     N = config.horizon
     print(f"MPC: horizon={N}, dt={CONTROL_DT}s, mass={mass:.4f}kg")
+
+    def rebuild_mpc():
+        mpc_state["mpc"] = MPCController(mpc_state["config"])
 
     # --- PyVista plotter ---
     plotter = pv.Plotter(title="MPC Quadrotor GUI")
@@ -170,6 +173,77 @@ def main():
         test_callback=False,
     )
 
+    # --- Parameter sliders ---
+    def on_q_pos(value):
+        c = mpc_state["config"]
+        c.Q_diag = [value, 1.0, value, 1.0, value, 1.0]
+        rebuild_mpc()
+
+    def on_r(value):
+        c = mpc_state["config"]
+        c.R_diag = [value, value, value]
+        rebuild_mpc()
+
+    def on_a_max(value):
+        mpc_state["config"].a_max = value
+        rebuild_mpc()
+
+    def on_v_max(value):
+        mpc_state["config"].v_max = value
+        rebuild_mpc()
+
+    plotter.add_slider_widget(
+        on_q_pos, rng=[1, 100], value=10, title="Q (position)",
+        pointa=(0.02, 0.92), pointb=(0.28, 0.92),
+        interaction_event="end",
+    )
+    plotter.add_slider_widget(
+        on_r, rng=[0.01, 20], value=1.0, title="R (effort)",
+        pointa=(0.02, 0.82), pointb=(0.28, 0.82),
+        interaction_event="end",
+    )
+    plotter.add_slider_widget(
+        on_a_max, rng=[1, 15], value=5.0, title="a_max (m/s^2)",
+        pointa=(0.02, 0.72), pointb=(0.28, 0.72),
+        interaction_event="end",
+    )
+    plotter.add_slider_widget(
+        on_v_max, rng=[0.5, 5], value=2.0, title="v_max (m/s)",
+        pointa=(0.02, 0.62), pointb=(0.28, 0.62),
+        interaction_event="end",
+    )
+
+    def on_qf(value):
+        c = mpc_state["config"]
+        c.Qf_diag = [value, value / 10, value, value / 10, value, value / 10]
+        rebuild_mpc()
+
+    def on_q_vel(value):
+        c = mpc_state["config"]
+        c.Q_diag[1] = value  # vx
+        c.Q_diag[3] = value  # vy
+        c.Q_diag[5] = value  # vz
+        rebuild_mpc()
+
+    def on_max_tilt(value):
+        mpc_state["max_tilt"] = value
+
+    plotter.add_slider_widget(
+        on_qf, rng=[10, 500], value=200, title="Qf (terminal)",
+        pointa=(0.02, 0.52), pointb=(0.28, 0.52),
+        interaction_event="end",
+    )
+    plotter.add_slider_widget(
+        on_q_vel, rng=[0.1, 20], value=1.0, title="Q (velocity)",
+        pointa=(0.02, 0.42), pointb=(0.28, 0.42),
+        interaction_event="end",
+    )
+    plotter.add_slider_widget(
+        on_max_tilt, rng=[0.1, 1.0], value=0.5, title="max_tilt (rad)",
+        pointa=(0.02, 0.32), pointb=(0.28, 0.32),
+        interaction_event="end",
+    )
+
     # Camera and axes
     plotter.camera_position = "xz"
     plotter.add_axes()
@@ -185,6 +259,7 @@ def main():
 
         # 2. Build reference from dragged target
         mpc_target = cf_target_to_mpc(target_cf)
+        mpc = mpc_state["mpc"]
         ref = static_reference(mpc_target, N, CONTROL_DT)
 
         # 3. Solve MPC
@@ -192,7 +267,7 @@ def main():
         ax, ay, az = u_opt
 
         # 4. Apply to sim
-        attitude = mpc_accel_to_attitude(ax, ay, az, mass, thrust_max)
+        attitude = mpc_accel_to_attitude(ax, ay, az, mass, thrust_max, mpc_state["max_tilt"])
         cmd = np.zeros((1, 1, 4))
         cmd[0, 0, :] = attitude
         sim.attitude_control(cmd)
@@ -203,7 +278,7 @@ def main():
         drone_mesh.copy_from(pv.Sphere(radius=0.05, center=tuple(new_pos)))
 
         # 6. Update MPC planned trajectory
-        planned = mpc.get_planned_trajectory()
+        planned = mpc_state["mpc"].get_planned_trajectory()
         if planned is not None:
             cf_traj = mpc_traj_to_cf(np.array(planned))
             if len(cf_traj) >= 2:
