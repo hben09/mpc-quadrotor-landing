@@ -146,11 +146,11 @@ def main():
             roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
 
             # Convert cflib units to crazyflow units at the API boundary
-            yaw_angle += np.radians(yawrate) * dt
+            yaw_angle -= np.radians(yawrate) * dt
 
             cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
-            cmd[..., 0] = np.radians(roll)
-            cmd[..., 1] = np.radians(pitch)
+            cmd[..., 0] = -np.radians(pitch)
+            cmd[..., 1] = np.radians(roll)
             cmd[..., 2] = yaw_angle
             cmd[..., 3] = pwm_to_thrust(thrust, mass)
 
