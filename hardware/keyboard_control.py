@@ -61,13 +61,13 @@ def compute_setpoint(mode):
     yawrate = 0.0
 
     if 'w' in keys:
-        pitch = -MAX_PITCH   # negative pitch = forward
-    if 's' in keys:
         pitch = MAX_PITCH
+    if 's' in keys:
+        pitch = -MAX_PITCH
     if 'a' in keys:
-        roll = MAX_ROLL
-    if 'd' in keys:
         roll = -MAX_ROLL
+    if 'd' in keys:
+        roll = MAX_ROLL
     if 'q' in keys:
         yawrate = -MAX_YAWRATE
     if 'e' in keys:
