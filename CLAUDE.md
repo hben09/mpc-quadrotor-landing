@@ -11,6 +11,7 @@ mpc_landing/            # Core control library (workspace member, importable pac
   mpc.py                # Linear MPC controller (CVXPY/OSQP, 3D double integrator)
   reference.py          # Reference trajectory generation (tracking, landing, static)
   boundary.py           # RASTIC arena boundary safety checker
+  supervisor.py         # SafeCommander — boundary safety supervisor wrapping cf.commander
   mqtt/                 # MQTT rigid-body pose streaming from OptiTrack
     parser.py           # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
     sub.py              # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
@@ -46,6 +47,22 @@ All scripts are runnable via `uv run <command>`:
 2. **Ground vehicle pose** → OptiTrack → Motive → MQTT broker → topic `rb/limo777` → `mpc_landing/mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
 3. **MPC controller** computes desired acceleration commands
 4. **cflib** → Crazyradio 2.0 → Crazyflie
+
+### Boundary Supervisor (`SafeCommander`)
+`mpc_landing/supervisor.py` provides `SafeCommander`, a drop-in replacement for `cf.commander` that enforces arena boundary safety. It:
+- Monitors drone position via MQTT (`rb/crazyflie`) in a background thread
+- Checks every `send_setpoint()` call against arena boundaries (via `check_boundary()`)
+- Disarms motors and blocks all further commands if:
+  - Drone violates a boundary (only checked once airborne, Y > 0.3 m)
+  - Position data goes stale (>2 s without MQTT update)
+- Degrades gracefully: if the MQTT broker is unreachable, prints a warning and passes commands through unsupervised
+
+Usage (context manager):
+```python
+with SafeCommander(cf.commander) as commander:
+    commander.send_setpoint(roll, pitch, yawrate, thrust)
+```
+Currently used in `hardware/keyboard_control.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
