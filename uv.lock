@@ -1001,13 +1001,21 @@ version = "0.1.0"
 source = { editable = "hardware" }
 dependencies = [
     { name = "cflib" },
+    { name = "mpc-landing" },
+    { name = "paho-mqtt" },
     { name = "pynput" },
+    { name = "pyvista" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cflib" },
+    { name = "mpc-landing", editable = "mpc_landing" },
+    { name = "paho-mqtt" },
     { name = "pynput" },
+    { name = "pyvista" },
+    { name = "scipy" },
 ]
 
 [[package]]
