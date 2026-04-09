@@ -77,6 +77,10 @@ V_STOP = 0.01             # m/s, snap-to-zero threshold
 BOX_HALF_EXTENTS = np.array([0.10, 0.07, 0.02])  # 20cm x 14cm x 4cm
 BOX_COLOR = np.array([0.2, 0.6, 1.0, 0.9])       # light blue
 
+# Collision
+DRONE_HALF_HEIGHT = 0.03  # approximate drone body half-height
+COLLISION_MARGIN = 0.02   # horizontal tolerance
+
 # Rendering
 FPS = 30
 
@@ -339,6 +343,25 @@ def main():
             # --- Step sim (10 physics steps = 1 MPC step at 50Hz) ---
             sim.attitude_control(cmd)
             sim.step(STEPS_PER_MPC)
+
+            # --- Collision: clamp drone onto vehicle platform ---
+            drone_pos = np.array(sim.data.states.pos[0, 0])  # CF [x, y, z]
+            veh_cf_x = vehicle.pos[0]   # MPC px = CF x
+            veh_cf_y = vehicle.pos[2]   # MPC pz = CF y
+            platform_top = 2 * BOX_HALF_EXTENTS[2] + DRONE_HALF_HEIGHT
+
+            in_footprint = (
+                abs(drone_pos[0] - veh_cf_x) < BOX_HALF_EXTENTS[0] + COLLISION_MARGIN
+                and abs(drone_pos[1] - veh_cf_y) < BOX_HALF_EXTENTS[1] + COLLISION_MARGIN
+            )
+            if in_footprint and drone_pos[2] < platform_top:
+                new_pos = sim.data.states.pos.at[0, 0, 2].set(platform_top)
+                new_vel = sim.data.states.vel
+                if float(sim.data.states.vel[0, 0, 2]) < 0:
+                    new_vel = new_vel.at[0, 0, 2].set(0.0)
+                sim.data = sim.data.replace(
+                    states=sim.data.states.replace(pos=new_pos, vel=new_vel)
+                )
 
             # --- Render ---
             step_count += 1
