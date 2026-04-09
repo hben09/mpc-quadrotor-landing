@@ -22,6 +22,7 @@ sim/                    # Crazyflow simulation environment (workspace member)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
   keyboard_control.py   # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
+  mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
   thrust_test.py        # Thrust calibration utility for Crazyflie
 
 archive/                # Legacy code kept for reference
@@ -32,6 +33,7 @@ archive/                # Legacy code kept for reference
 
 All scripts are runnable via `uv run <command>`:
 - `keyboard-control` — manual flight with physical Crazyflie
+- `mqtt-viewer` — real-time 3D drone position viewer (OptiTrack via MQTT)
 - `thrust-test` — motor thrust calibration
 - `sim-mpc` — MPC simulation with virtual target
 - `sim-mpc-ground` — MPC simulation with physics-based ground vehicle
@@ -62,6 +64,7 @@ All scripts are runnable via `uv run <command>`:
 - Drone: Crazyflie 2.1 (Crazyflie firmware), antenna bump indicates the front
 - Crazyradio 2.0 USB dongle connected to PC
 - OptiTrack motion capture system (4 markers per drone)
+- OptiTrack/Motive coordinate system: X = forward, Y = up, Z = right
 - RASTIC arena bounds: X [-4.5, 3.0], Y [0.0, 2.0], Z [-2.0, 3.0] meters
 - Hover thrust: ~45000 at full battery (with 3 markers)
 
