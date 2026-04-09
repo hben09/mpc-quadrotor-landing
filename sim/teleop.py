@@ -71,13 +71,13 @@ def compute_setpoint(mode):
     yawrate = 0.0
 
     if 'w' in keys:
-        pitch = -MAX_PITCH   # negative pitch = forward
-    if 's' in keys:
         pitch = MAX_PITCH
+    if 's' in keys:
+        pitch = -MAX_PITCH
     if 'a' in keys:
-        roll = MAX_ROLL
-    if 'd' in keys:
         roll = -MAX_ROLL
+    if 'd' in keys:
+        roll = MAX_ROLL
     if 'q' in keys:
         yawrate = -MAX_YAWRATE
     if 'e' in keys:
@@ -149,8 +149,8 @@ def main():
             yaw_angle -= np.radians(yawrate) * dt
 
             cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
-            cmd[..., 0] = -np.radians(pitch)
-            cmd[..., 1] = np.radians(roll)
+            cmd[..., 0] = np.radians(pitch)    # CF roll = forward/back (model rotated 90° from cflib)
+            cmd[..., 1] = -np.radians(roll)   # CF pitch = left/right (negated: -cflib_roll = +CF_pitch)
             cmd[..., 2] = yaw_angle
             cmd[..., 3] = pwm_to_thrust(thrust, mass)
 
