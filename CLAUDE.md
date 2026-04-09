@@ -83,5 +83,13 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
 | Max tilt | 0.5 rad (~28.6°) | 15° (keyboard_control default) |
 | State source | Perfect physics (zero noise/latency) | OptiTrack via MQTT (noisy velocity from finite diff, network latency) |
 | Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | Not yet implemented (needs `optitrack_to_mpc_state()`) |
+| Roll/pitch axes | Swapped — see note below | Standard: +pitch = forward, -roll = left |
+
+**Crazyflow roll/pitch axis swap:** Crazyflow's "roll" and "pitch" axes are rotated 90° from cflib's convention. In cflib, +pitch tilts the drone forward; in crazyflow, +roll does. To send cflib-style commands to crazyflow, swap the channels and negate roll:
+```
+CF_roll  = radians(cflib_pitch)     # forward/back
+CF_pitch = -radians(cflib_roll)     # left/right
+```
+See `sim/teleop.py` lines 152-153. This is a naming difference in crazyflow's attitude controller, not fixable by rotating the drone's initial orientation.
 
 Newton-to-PWM thrust calibration is not yet established; use `hardware/thrust_test.py` to build one.
