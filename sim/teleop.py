@@ -5,12 +5,18 @@ Uses attitude control to match cflib's send_setpoint(roll, pitch, yawrate, thrus
 Controls:
     W/S     - pitch forward / backward
     A/D     - roll left / right
-    Shift   - increase thrust
-    Z       - decrease thrust
     Q/E     - yaw left / right
-    R       - reset (level + hover thrust)
+    1       - DISARM (0 thrust)
+    2       - ARM (15000 thrust)
+    3       - HOVER (35000 thrust)
+    Space   - increase thrust (HOVER mode)
+    Shift   - decrease thrust (HOVER mode)
     ESC     - quit
 """
+
+import sys
+import time
+from threading import Lock
 
 import numpy as np
 from pynput import keyboard
@@ -19,14 +25,92 @@ from crazyflow.control import Control
 from crazyflow.sim import Physics, Sim
 from crazyflow.sim.integration import Integrator
 
-MAX_ROLL = 0.5  # rad (~28 deg)
-MAX_PITCH = 0.5  # rad (~28 deg)
-RAMP_SPEED = 3.0  # rad/s — how fast roll/pitch ramps up/down
-YAW_SPEED = 1.0  # rad/s
-THRUST_STEP = 0.05  # N per second
+MAX_ROLL = 15.0       # degrees
+MAX_PITCH = 15.0      # degrees
+MAX_YAWRATE = 60.0    # degrees/s
+MAX_THRUST = 45000
+
+# Discrete thrust modes
+MODE_DISARM = 'DISARM'
+MODE_ARM = 'ARM'
+MODE_HOVER = 'HOVER'
+MODE_THRUST = {MODE_DISARM: 0, MODE_ARM: 15000, MODE_HOVER: 35000}
+
+# Shared state
+pressed_keys = set()
+keys_lock = Lock()
+running = True
+
+
+def on_press(key):
+    global running
+    if key == keyboard.Key.esc:
+        running = False
+        return False  # stop listener
+    with keys_lock:
+        try:
+            pressed_keys.add(key.char.lower())
+        except AttributeError:
+            pressed_keys.add(key)
+
+
+def on_release(key):
+    with keys_lock:
+        try:
+            pressed_keys.discard(key.char.lower())
+        except AttributeError:
+            pressed_keys.discard(key)
+
+
+def compute_setpoint(mode):
+    with keys_lock:
+        keys = set(pressed_keys)
+
+    roll = 0.0
+    pitch = 0.0
+    yawrate = 0.0
+
+    if 'w' in keys:
+        pitch = -MAX_PITCH   # negative pitch = forward
+    if 's' in keys:
+        pitch = MAX_PITCH
+    if 'a' in keys:
+        roll = MAX_ROLL
+    if 'd' in keys:
+        roll = -MAX_ROLL
+    if 'q' in keys:
+        yawrate = -MAX_YAWRATE
+    if 'e' in keys:
+        yawrate = MAX_YAWRATE
+
+    if '1' in keys:
+        mode = MODE_DISARM
+    elif '2' in keys:
+        mode = MODE_ARM
+    elif '3' in keys:
+        mode = MODE_HOVER
+
+    thrust = MODE_THRUST[mode]
+
+    if mode == MODE_HOVER:
+        if keyboard.Key.space in keys:
+            thrust += 4000
+        elif keyboard.Key.shift_l in keys or keyboard.Key.shift_r in keys or keyboard.Key.shift in keys:
+            thrust -= 4000
+
+    return roll, pitch, yawrate, thrust, mode
+
+
+def pwm_to_thrust(pwm, mass):
+    """Convert cflib PWM (0–65535) to collective thrust in Newtons."""
+    hover_pwm = 35000
+    hover_thrust = mass * 9.81
+    return pwm / hover_pwm * hover_thrust
 
 
 def main():
+    global running
+
     sim = Sim(
         n_worlds=1,
         n_drones=1,
@@ -40,119 +124,51 @@ def main():
     sim.reset()
 
     mass = float(sim.data.params.mass[0, 0, 0])
-    hover_thrust = mass * 9.81
 
-    pressed: set[str] = set()
-    running = True
-
-    special_keys = {
-        keyboard.Key.space: "_space",
-        keyboard.Key.shift: "_shift",
-        keyboard.Key.shift_l: "_shift",
-        keyboard.Key.shift_r: "_shift",
-    }
-
-    def on_press(key):
-        if key in special_keys:
-            pressed.add(special_keys[key])
-        else:
-            try:
-                pressed.add(key.char)
-            except AttributeError:
-                pass
-
-    def on_release(key):
-        if key == keyboard.Key.esc:
-            nonlocal running
-            running = False
-            return False
-        if key in special_keys:
-            pressed.discard(special_keys[key])
-        else:
-            try:
-                pressed.discard(key.char)
-            except AttributeError:
-                pass
+    print()
+    print('=== Keyboard Control Active (Sim) ===')
+    print('W/S = pitch | A/D = roll | Q/E = yaw')
+    print('1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (35000)')
+    print('Space = thrust up | Shift = thrust down (HOVER mode)')
+    print('Esc = quit')
+    print()
 
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
 
-    thrust = hover_thrust
-    thrust_max = float(sim.data.controls.attitude.params.thrust_max)
-    roll = 0.0
-    pitch = 0.0
-    yaw = 0.0
-    dt = 1.0 / sim.control_freq
-    fps = 60
+    dt = 0.02  # 50 Hz
+    steps_per_iter = sim.freq // 50
+    yaw_angle = 0.0
+    mode = MODE_DISARM
 
-    print(f"Teleop active — hover thrust: {hover_thrust:.3f} N")
-    print("W/S pitch, A/D roll, Z/Shift thrust, Q/E yaw, R reset, ESC quit")
+    try:
+        while running:
+            roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
 
-    step = 0
-    while running:
-        # Reset
-        if "r" in pressed:
-            thrust = hover_thrust
-            yaw = 0.0
+            # Convert cflib units to crazyflow units at the API boundary
+            yaw_angle += np.radians(yawrate) * dt
 
-        # Roll/pitch ramp toward target while key held, ramp back to 0 on release
-        roll_target = 0.0
-        pitch_target = 0.0
-        if "a" in pressed:
-            roll_target = -MAX_ROLL
-        if "d" in pressed:
-            roll_target = MAX_ROLL
-        if "w" in pressed:
-            pitch_target = MAX_PITCH
-        if "s" in pressed:
-            pitch_target = -MAX_PITCH
+            cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
+            cmd[..., 0] = np.radians(roll)
+            cmd[..., 1] = np.radians(pitch)
+            cmd[..., 2] = yaw_angle
+            cmd[..., 3] = pwm_to_thrust(thrust, mass)
 
-        if roll < roll_target:
-            roll = min(roll + RAMP_SPEED * dt, roll_target)
-        elif roll > roll_target:
-            roll = max(roll - RAMP_SPEED * dt, roll_target)
-
-        if pitch < pitch_target:
-            pitch = min(pitch + RAMP_SPEED * dt, pitch_target)
-        elif pitch > pitch_target:
-            pitch = max(pitch - RAMP_SPEED * dt, pitch_target)
-
-        # Thrust (holds value like a throttle)
-        if "_shift" in pressed:
-            thrust += THRUST_STEP * dt
-        if "z" in pressed:
-            thrust -= THRUST_STEP * dt
-        thrust = max(thrust, 0.0)
-
-        # Yaw (Q/E act as yaw rate — accumulates into angle for crazyflow)
-        yaw_rate = 0.0
-        if "q" in pressed:
-            yaw_rate = YAW_SPEED
-        if "e" in pressed:
-            yaw_rate = -YAW_SPEED
-        yaw += yaw_rate * dt
-
-        # Attitude command: [roll, pitch, yaw, collective_thrust]
-        cmd = np.zeros((sim.n_worlds, sim.n_drones, 4))
-        cmd[..., 0] = roll
-        cmd[..., 1] = pitch
-        cmd[..., 2] = yaw
-        cmd[..., 3] = thrust
-
-        sim.attitude_control(cmd)
-        sim.step(sim.freq // sim.control_freq)
-
-        pwm = int(np.clip(thrust / thrust_max * 65535, 0, 65535))
-        if ((step * fps) % sim.control_freq) < fps:
+            sim.attitude_control(cmd)
+            sim.step(steps_per_iter)
             sim.render()
-            print(f"\rroll={roll:+.2f}  pitch={pitch:+.2f}  yaw_rate={yaw_rate:+.1f}  thrust={thrust:.3f} ({pwm})", end="")
 
-        step += 1
+            sys.stdout.write(
+                f'\rMode: {mode:7s}  Roll: {roll:+6.1f}  Pitch: {pitch:+6.1f}  '
+                f'Yaw: {yawrate:+6.1f}  Thrust: {thrust:5d}  '
+            )
+            sys.stdout.flush()
+            time.sleep(dt)
+    finally:
+        sim.close()
+        listener.stop()
+        print('\nSim closed. Done.')
 
-    sim.close()
-    listener.stop()
-    print("Done.")
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
