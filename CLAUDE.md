@@ -8,14 +8,13 @@ MPC-based autonomous quadrotor landing system. A Crazyflie drone is controlled f
 
 ```
 src/                  # Main control package
-  supervisor.py       # Main node — 50Hz control loop, MQTT mocap + serial I/O
   mpc.py              # Linear MPC controller (CVXPY/OSQP, 3D double integrator)
   pid.py              # PID baseline controller (currently active in supervisor)
   reference.py        # Reference trajectory generation (tracking, landing, static)
   boundary.py         # RASTIC arena boundary safety checker
-  crsf.py             # (legacy, Air65) CRSF protocol encoding for ELRS TX module
-  mqtt_sub.py         # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
-  mqtt_parser.py      # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
+  mqtt/               # MQTT rigid-body pose streaming from OptiTrack
+    parser.py         # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
+    sub.py            # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
 
 sim/                  # Crazyflow simulation environment
   teleop.py           # Keyboard teleoperation (attitude control, 500Hz, pynput)

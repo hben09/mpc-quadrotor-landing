@@ -3,7 +3,7 @@
 
 import paho.mqtt.client as mqtt
 
-from mqtt_parser import RigidBodyTracker
+from mqtt.parser import RigidBodyTracker
 
 BROKER = "rasticvm.internal"
 PORT = 1883

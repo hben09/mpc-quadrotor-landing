@@ -13,4 +13,5 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["mpc", "pid", "reference", "boundary", "mqtt_sub", "mqtt_parser"]
+py-modules = ["mpc", "pid", "reference", "boundary"]
+packages = ["mqtt"]
