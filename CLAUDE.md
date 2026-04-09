@@ -85,11 +85,14 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
 | Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | Not yet implemented (needs `optitrack_to_mpc_state()`) |
 | Roll/pitch axes | Swapped — see note below | Standard: +pitch = forward, -roll = left |
 
-**Crazyflow roll/pitch axis swap:** Crazyflow's "roll" and "pitch" axes are rotated 90° from cflib's convention. In cflib, +pitch tilts the drone forward; in crazyflow, +roll does. To send cflib-style commands to crazyflow, swap the channels and negate roll:
-```
-CF_roll  = radians(cflib_pitch)     # forward/back
-CF_pitch = -radians(cflib_roll)     # left/right
-```
-See `sim/teleop.py` lines 152-153. This is a naming difference in crazyflow's attitude controller, not fixable by rotating the drone's initial orientation.
+**Crazyflow roll/pitch visual rotation:** The Crazyflie 3D model in Crazyflow is visually rotated 90° from cflib's convention. The attitude controller itself uses **standard convention** (roll=lateral, pitch=forward in world frame).
+
+- **teleop.py** (human-in-the-loop): Must swap pitch/roll to compensate for the visual model rotation so keyboard controls match what the pilot sees on screen:
+  ```
+  CF_roll  = radians(cflib_pitch)     # forward/back
+  CF_pitch = -radians(cflib_roll)     # left/right
+  ```
+  See `sim/teleop.py` lines 152-153.
+- **MPC** (world-frame control): Uses standard physics (roll=lateral, pitch=forward) and is **not affected** by the visual rotation. `mpc_accel_to_attitude()` in `sim/mpc_controller.py` is correct as-is — no swap needed.
 
 Newton-to-PWM thrust calibration is not yet established; use `hardware/thrust_test.py` to build one.
