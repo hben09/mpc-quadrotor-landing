@@ -22,7 +22,8 @@ MAX_THRUST = 45000
 MODE_DISARM = 'DISARM'
 MODE_ARM = 'ARM'
 MODE_HOVER = 'HOVER'
-MODE_THRUST = {MODE_DISARM: 0, MODE_ARM: 15000, MODE_HOVER: 35000}
+MODE_THRUST = {MODE_DISARM: 0, MODE_ARM: 15000, MODE_HOVER: 45000}
+THRUST_STEP = 5000
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -84,9 +85,9 @@ def compute_setpoint(mode):
 
     if mode == MODE_HOVER:
         if keyboard.Key.space in keys:
-            thrust += 4000
+            thrust += THRUST_STEP
         elif keyboard.Key.shift_l in keys or keyboard.Key.shift_r in keys or keyboard.Key.shift in keys:
-            thrust -= 4000
+            thrust -= THRUST_STEP
 
     return roll, pitch, yawrate, thrust, mode
 
@@ -118,7 +119,8 @@ def main():
         print()
         print('=== Keyboard Control Active ===')
         print('W/S = pitch | A/D = roll | Q/E = yaw')
-        print('1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (35000)')
+        print('1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (45000)')
+        print('Space = thrust +5000 | Shift = thrust -5000')
         print('Esc = emergency stop & quit')
         print()
 
