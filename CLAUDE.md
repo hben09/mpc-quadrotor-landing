@@ -100,6 +100,12 @@ Currently used in `hardware/keyboard_control.py`.
 
 OptiTrack and MPC use the same axis order (no swap needed). Crazyflow swaps Y/Z — see `cf_to_mpc_state()` in `sim/mpc_controller.py`.
 
+### OptiTrack Euler Angles
+`MQTTRigidBody.euler` is computed via `Rotation.as_euler("xyz")` (intrinsic XYZ). In OptiTrack's frame the indices map to:
+- `euler[0]` — **Roll** (rotation about X/forward): + = right roll
+- `euler[1]` — **Yaw** (rotation about Y/up): + = left (CCW from above)
+- `euler[2]` — **Pitch** (rotation about Z/right): + = nose up (backward pitch)
+
 ## Sim vs Hardware Control Interface
 
 MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation to actuator commands differs between sim and hardware:

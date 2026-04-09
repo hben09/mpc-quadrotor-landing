@@ -92,7 +92,7 @@ def mpc_accel_to_cflib_setpoint(ax, ay, az):
         thrust_pwm = HOVER_PWM * (1 + ay / g)
     """
     pitch_deg = float(np.clip(np.degrees(ax / G), -MAX_TILT_DEG, MAX_TILT_DEG))
-    roll_deg = float(np.clip(np.degrees(-az / G), -MAX_TILT_DEG, MAX_TILT_DEG))
+    roll_deg = float(np.clip(np.degrees(az / G), -MAX_TILT_DEG, MAX_TILT_DEG))
     yawrate = 0.0
     thrust_pwm = int(np.clip(HOVER_PWM * (1.0 + ay / G), 0, 60000))
     return roll_deg, pitch_deg, yawrate, thrust_pwm

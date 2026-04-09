@@ -13,7 +13,7 @@ class MQTTRigidBody:
 
     pos: list[float]        # [x, y, z] metres
     rot: list[float]        # [qx, qy, qz, qw] quaternion
-    euler: list[float]      # [roll, pitch, yaw] radians
+    euler: list[float]      # [roll, yaw, pitch] radians (intrinsic XYZ in OptiTrack frame)
     vel: list[float]        # [vx, vy, vz] m/s (zero until tracker computes it)
     metadata: dict          # raw metadata dict
     timestamp: float        # motive_timestamp (seconds)
