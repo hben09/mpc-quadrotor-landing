@@ -7,9 +7,11 @@ MPC-based autonomous quadrotor landing system. A Crazyflie drone is controlled f
 ## Repository Structure
 
 ```
+keyboard_control.py   # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
+thrust_test.py        # Thrust calibration utility for Crazyflie
+
 src/                  # Main control package
   mpc.py              # Linear MPC controller (CVXPY/OSQP, 3D double integrator)
-  pid.py              # PID baseline controller (currently active in supervisor)
   reference.py        # Reference trajectory generation (tracking, landing, static)
   boundary.py         # RASTIC arena boundary safety checker
   mqtt/               # MQTT rigid-body pose streaming from OptiTrack
@@ -17,26 +19,28 @@ src/                  # Main control package
     sub.py            # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
 
 sim/                  # Crazyflow simulation environment
-  teleop.py           # Keyboard teleoperation (attitude control, 500Hz, pynput)
+  mpc_controller.py   # Closed-loop MPC simulation (hover + tracking + landing)
+  teleop.py           # Keyboard teleoperation (attitude control, pynput)
   old/                # Legacy CoppeliaSim scripts (archived)
 ```
 
 ## Architecture
 
 ### Control Pipeline
-1. **Drone pose** → OptiTrack → Motive → MQTT broker (`rasticvm.internal:1883`) → topic `rb/crazyflie` → `mqtt_parser.py` → `MQTTRigidBody` (pos, euler, vel)
-2. **Ground vehicle pose** → OptiTrack → Motive → MQTT broker → topic `rb/limo777` → `mqtt_parser.py` → `MQTTRigidBody` (pos, euler, vel)
-3. **Controller** (PID or MPC) computes desired commands (control interface TBD)
+1. **Drone pose** → OptiTrack → Motive → MQTT broker (`rasticvm.internal:1883`) → topic `rb/crazyflie` → `mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
+2. **Ground vehicle pose** → OptiTrack → Motive → MQTT broker → topic `rb/limo777` → `mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
+3. **MPC controller** computes desired acceleration commands
 4. **cflib** → Crazyradio 2.0 → Crazyflie
 
 ### Current State
-- `supervisor.py` uses **PID** controller — MPC is implemented in `mpc.py` but not yet integrated
-- MPC is a drop-in replacement: call `mpc_controller.compute(x0, reference)` instead of `pid.compute(target)`
+- MPC controller implemented in `src/mpc.py`, tested in simulation via `sim/mpc_controller.py`
+- Hardware control currently via `keyboard_control.py` (manual attitude teleoperation)
+- Next step: integrate MPC with cflib for autonomous hardware flight
 - MPC state: [px, vx, py, vy, pz, vz], control: [ax, ay, az], horizon: 25 steps (0.5s)
 
 ## Dependencies
 
-- **Python**: numpy, cvxpy, scipy, cflib, paho-mqtt
+- **Python**: numpy, cvxpy, scipy, cflib, paho-mqtt, pyserial
 - **Sim**: crazyflow (from GitHub, managed via uv in sim/), pynput
 
 ## Hardware
