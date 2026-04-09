@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import json
 import threading
 
 import numpy as np
@@ -28,6 +29,8 @@ BROKER = "rasticvm.internal"
 PORT = 1883
 DRONE_TOPIC = "rb/crazyflie"
 LIMO_TOPIC = "rb/limo777"
+MPC_TARGET_TOPIC = "mpc/target"
+MPC_TRAJ_TOPIC = "mpc/trajectory"
 CALLBACK_MS = 50  # 20 Hz
 MAX_TRAIL_POINTS = 2000
 DRONE_RADIUS = 0.05
@@ -43,6 +46,8 @@ class TrackedState:
         self._lock = threading.Lock()
         self._drone: MQTTRigidBody | None = None
         self._limo: MQTTRigidBody | None = None
+        self._mpc_target: list[float] | None = None
+        self._mpc_traj: list[list[float]] | None = None
 
     def set_drone(self, rb: MQTTRigidBody):
         with self._lock:
@@ -52,9 +57,21 @@ class TrackedState:
         with self._lock:
             self._limo = rb
 
+    def set_mpc_target(self, pos: list[float]):
+        with self._lock:
+            self._mpc_target = pos
+
+    def set_mpc_traj(self, points: list[list[float]]):
+        with self._lock:
+            self._mpc_traj = points
+
     def get(self) -> tuple[MQTTRigidBody | None, MQTTRigidBody | None]:
         with self._lock:
             return self._drone, self._limo
+
+    def get_mpc(self) -> tuple[list[float] | None, list[list[float]] | None]:
+        with self._lock:
+            return self._mpc_target, self._mpc_traj
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +158,9 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
         print(f"MQTT connected (rc={reason_code})")
         client.subscribe(DRONE_TOPIC)
         client.subscribe(LIMO_TOPIC)
-        print(f"Subscribed to '{DRONE_TOPIC}', '{LIMO_TOPIC}'")
+        client.subscribe(MPC_TARGET_TOPIC)
+        client.subscribe(MPC_TRAJ_TOPIC)
+        print(f"Subscribed to '{DRONE_TOPIC}', '{LIMO_TOPIC}', 'mpc/#'")
 
     def on_message(client, userdata, msg):
         try:
@@ -151,6 +170,12 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
             elif msg.topic == LIMO_TOPIC:
                 rb = limo_tracker.update(msg.payload.decode())
                 state.set_limo(rb)
+            elif msg.topic == MPC_TARGET_TOPIC:
+                data = json.loads(msg.payload.decode())
+                state.set_mpc_target(data["pos"])
+            elif msg.topic == MPC_TRAJ_TOPIC:
+                data = json.loads(msg.payload.decode())
+                state.set_mpc_traj(data["points"])
         except Exception as e:
             print(f"Parse error on {msg.topic}: {e}")
 
@@ -200,6 +225,10 @@ def main():
     limo_mesh = pv.Sphere(radius=LIMO_RADIUS, center=(0, 0, 0))
     plotter.add_mesh(limo_mesh, color="red", name="limo", opacity=0.6)
 
+    # MPC target sphere
+    target_mesh = pv.Sphere(radius=0.06, center=(0, 0, 0))
+    plotter.add_mesh(target_mesh, color="red", name="mpc_target", opacity=0.0)
+
     # Orientation axes (added on first data arrival)
 
     # Trail state
@@ -243,11 +272,27 @@ def main():
             limo_pv = mqtt_to_pyvista(limo.pos)
             limo_mesh.copy_from(pv.Sphere(radius=LIMO_RADIUS, center=limo_pv))
 
+        # Update MPC target + trajectory
+        mpc_target, mpc_traj = state.get_mpc()
+        if mpc_target is not None:
+            tgt_pv = mqtt_to_pyvista(mpc_target)
+            target_mesh.copy_from(pv.Sphere(radius=0.06, center=tgt_pv))
+            plotter.add_mesh(target_mesh, color="red", name="mpc_target", opacity=0.8)
+        if mpc_traj is not None and len(mpc_traj) >= 2:
+            traj_pv = [mqtt_to_pyvista(p) for p in mpc_traj]
+            traj_line = build_trail_mesh(traj_pv)
+            plotter.add_mesh(traj_line, color="orange", line_width=3, name="mpc_traj")
+
         # Update HUD
+        mpc_line = "MPC: --"
+        if mpc_target is not None:
+            t = mpc_target
+            mpc_line = f"MPC tgt: [{t[0]:+.3f}, {t[1]:+.3f}, {t[2]:+.3f}]"
         plotter.add_text(
             f"pos: [{drone.pos[0]:+.3f}, {drone.pos[1]:+.3f}, {drone.pos[2]:+.3f}]\n"
             f"vel: [{drone.vel[0]:+.3f}, {drone.vel[1]:+.3f}, {drone.vel[2]:+.3f}]\n"
-            f"euler: [{drone.euler[0]:+.2f}, {drone.euler[1]:+.2f}, {drone.euler[2]:+.2f}]",
+            f"euler: [{drone.euler[0]:+.2f}, {drone.euler[1]:+.2f}, {drone.euler[2]:+.2f}]\n"
+            f"{mpc_line}",
             position="upper_right", font_size=10, name="hud",
         )
 
