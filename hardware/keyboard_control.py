@@ -17,7 +17,12 @@ MAX_ROLL = 15.0       # degrees
 MAX_PITCH = 15.0      # degrees
 MAX_YAWRATE = 60.0    # degrees/s
 MAX_THRUST = 45000
-THRUST_STEP = 500
+
+# Discrete thrust modes
+MODE_DISARM = 'DISARM'
+MODE_ARM = 'ARM'
+MODE_HOVER = 'HOVER'
+MODE_THRUST = {MODE_DISARM: 0, MODE_ARM: 15000, MODE_HOVER: 35000}
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -47,7 +52,7 @@ def on_release(key):
             pressed_keys.discard(key)
 
 
-def compute_setpoint(thrust):
+def compute_setpoint(mode):
     with keys_lock:
         keys = set(pressed_keys)
 
@@ -60,23 +65,30 @@ def compute_setpoint(thrust):
     if 's' in keys:
         pitch = MAX_PITCH
     if 'a' in keys:
-        roll = -MAX_ROLL     # negative roll = left
-    if 'd' in keys:
         roll = MAX_ROLL
+    if 'd' in keys:
+        roll = -MAX_ROLL
     if 'q' in keys:
         yawrate = -MAX_YAWRATE
     if 'e' in keys:
         yawrate = MAX_YAWRATE
 
-    if keyboard.Key.space in keys:
-        thrust = min(thrust + THRUST_STEP, MAX_THRUST)
-    elif keyboard.Key.shift_l in keys or keyboard.Key.shift_r in keys or keyboard.Key.shift in keys:
-        thrust = max(thrust - THRUST_STEP, 0)
-    else:
-        # Gentle decay when no thrust key held
-        thrust = max(thrust - 100, 0)
+    if '1' in keys:
+        mode = MODE_DISARM
+    elif '2' in keys:
+        mode = MODE_ARM
+    elif '3' in keys:
+        mode = MODE_HOVER
 
-    return roll, pitch, yawrate, int(thrust)
+    thrust = MODE_THRUST[mode]
+
+    if mode == MODE_HOVER:
+        if keyboard.Key.space in keys:
+            thrust += 4000
+        elif keyboard.Key.shift_l in keys or keyboard.Key.shift_r in keys or keyboard.Key.shift in keys:
+            thrust -= 4000
+
+    return roll, pitch, yawrate, thrust, mode
 
 
 def main():
@@ -106,20 +118,20 @@ def main():
         print()
         print('=== Keyboard Control Active ===')
         print('W/S = pitch | A/D = roll | Q/E = yaw')
-        print('Space = thrust up | Shift = thrust down')
+        print('1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (35000)')
         print('Esc = emergency stop & quit')
         print()
 
         listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.start()
 
-        thrust = 0
+        mode = MODE_DISARM
         try:
             while running:
-                roll, pitch, yawrate, thrust = compute_setpoint(thrust)
+                roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
                 cf.commander.send_setpoint(roll, pitch, yawrate, thrust)
                 sys.stdout.write(
-                    f'\rRoll: {roll:+6.1f}  Pitch: {pitch:+6.1f}  '
+                    f'\rMode: {mode:7s}  Roll: {roll:+6.1f}  Pitch: {pitch:+6.1f}  '
                     f'Yaw: {yawrate:+6.1f}  Thrust: {thrust:5d}  '
                 )
                 sys.stdout.flush()
