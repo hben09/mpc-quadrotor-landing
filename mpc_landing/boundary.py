@@ -30,7 +30,7 @@ def check_boundary(position):
 
     if (b['x_max'] - x) <= t['x'] or (x - b['x_min']) <= t['x']:
         return True
-    if (b['y_max'] - y) <= t['y'] or (y - b['y_min']) <= t['y']:
+    if (b['y_max'] - y) <= t['y']:
         return True
     if (b['z_max'] - z) <= t['z'] or (z - b['z_min']) <= t['z']:
         return True

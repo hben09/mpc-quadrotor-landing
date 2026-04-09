@@ -11,6 +11,8 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.utils import uri_helper
 
+from mpc_landing.supervisor import SafeCommander
+
 URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
 
 MAX_ROLL = 15.0       # degrees
@@ -128,22 +130,32 @@ def main():
         listener.start()
 
         mode = MODE_DISARM
-        try:
-            while running:
-                roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
-                cf.commander.send_setpoint(roll, pitch, yawrate, thrust)
-                sys.stdout.write(
-                    f'\rMode: {mode:7s}  Roll: {roll:+6.1f}  Pitch: {pitch:+6.1f}  '
-                    f'Yaw: {yawrate:+6.1f}  Thrust: {thrust:5d}  '
-                )
-                sys.stdout.flush()
-                time.sleep(0.02)  # 50 Hz
-        finally:
-            cf.commander.send_stop_setpoint()
-            cf.commander.send_notify_setpoint_stop()
-            time.sleep(0.1)
-            listener.stop()
-            print('\nDisconnected. Motors stopped.')
+        with SafeCommander(cf.commander) as commander:
+            try:
+                while running:
+                    if commander.boundary_violated:
+                        print('\n*** BOUNDARY VIOLATED — MOTORS STOPPED ***')
+                        break
+
+                    roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
+                    commander.send_setpoint(roll, pitch, yawrate, thrust)
+
+                    pos = commander.position
+                    pos_str = (f"[{pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}]"
+                               if pos else "[no mocap]")
+                    mqtt_str = "MQTT:OK" if commander.connected else "MQTT:--"
+                    sys.stdout.write(
+                        f'\rMode: {mode:7s}  R:{roll:+6.1f} P:{pitch:+6.1f} '
+                        f'Y:{yawrate:+6.1f} T:{thrust:5d}  {mqtt_str} {pos_str}  '
+                    )
+                    sys.stdout.flush()
+                    time.sleep(0.02)  # 50 Hz
+            finally:
+                commander.send_stop_setpoint()
+                commander.send_notify_setpoint_stop()
+                time.sleep(0.1)
+                listener.stop()
+                print('\nDisconnected. Motors stopped.')
 
 
 if __name__ == '__main__':
