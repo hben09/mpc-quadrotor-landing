@@ -69,3 +69,19 @@ All scripts are runnable via `uv run <command>`:
 
 - Control loop: 50Hz (20ms period)
 - Crazyflie control interface: `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` — attitude commands via cflib
+
+## Sim vs Hardware Control Interface
+
+MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation to actuator commands differs between sim and hardware:
+
+| | Crazyflow sim | Crazyflie hardware (cflib) |
+|---|---|---|
+| API | `sim.attitude_control([roll, pitch, yaw, thrust])` | `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` |
+| Attitude units | Radians | Degrees |
+| Yaw | Absolute angle (rad) | **Rate** (deg/s) |
+| Thrust | Newtons | PWM (0–65535) |
+| Max tilt | 0.5 rad (~28.6°) | 15° (keyboard_control default) |
+| State source | Perfect physics (zero noise/latency) | OptiTrack via MQTT (noisy velocity from finite diff, network latency) |
+| Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | Not yet implemented (needs `optitrack_to_mpc_state()`) |
+
+Newton-to-PWM thrust calibration is not yet established; use `hardware/thrust_test.py` to build one.
