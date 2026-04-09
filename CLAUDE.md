@@ -59,7 +59,7 @@ All scripts are runnable via `uv run <command>`:
 
 ## Hardware
 
-- Drone: Crazyflie 2.1 (Crazyflie firmware)
+- Drone: Crazyflie 2.1 (Crazyflie firmware), antenna bump indicates the front
 - Crazyradio 2.0 USB dongle connected to PC
 - OptiTrack motion capture system (3 markers per drone)
 - RASTIC arena bounds: X [-4.5, 3.0], Y [0.0, 2.0], Z [-2.0, 3.0] meters
