@@ -9,9 +9,11 @@ dependencies = [
     "scipy",
     "pyserial",
     "paho-mqtt",
-    "cflib",
 ]
 
 [tool.setuptools]
-py-modules = ["mpc", "pid", "reference", "boundary"]
-packages = ["mqtt"]
+packages = ["mpc_landing", "mpc_landing.mqtt"]
+
+[tool.setuptools.package-dir]
+mpc_landing = "."
+"mpc_landing.mqtt" = "mqtt"

@@ -28,9 +28,7 @@ Usage:
     python mpc_controller.py
 """
 
-import sys
 import threading
-from pathlib import Path
 
 import numpy as np
 from pynput import keyboard
@@ -40,12 +38,8 @@ from crazyflow.sim import Physics, Sim
 from crazyflow.sim.integration import Integrator
 from crazyflow.sim.visualize import draw_points
 
-# Add src/ to path so we can import MPC modules
-SRC_DIR = Path(__file__).resolve().parents[1] / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-from mpc import MPCController, MPCConfig
-from reference import static_reference, tracking_reference, landing_reference
+from mpc_landing import MPCController, MPCConfig
+from mpc_landing.reference import static_reference, tracking_reference, landing_reference
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+from pathlib import Path
 from threading import Lock
 
 from pynput import keyboard
@@ -93,7 +94,8 @@ def main():
     uri = available[0][0]
 
     print('Connecting...')
-    with SyncCrazyflie(uri, cf=Crazyflie(rw_cache='./cache')) as scf:
+    cache_dir = str(Path(__file__).resolve().parent.parent / "cache")
+    with SyncCrazyflie(uri, cf=Crazyflie(rw_cache=cache_dir)) as scf:
         cf = scf.cf
 
         # Arm and unlock motors

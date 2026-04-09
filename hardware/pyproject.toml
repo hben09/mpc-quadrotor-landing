@@ -1,0 +1,16 @@
+[project]
+name = "mpc-hardware"
+version = "0.1.0"
+description = "Crazyflie hardware control scripts"
+requires-python = ">=3.13"
+dependencies = [
+    "cflib",
+    "pynput",
+]
+
+[tool.setuptools]
+py-modules = ["keyboard_control", "thrust_test"]
+
+[project.scripts]
+keyboard-control = "keyboard_control:main"
+thrust-test = "thrust_test:main"
