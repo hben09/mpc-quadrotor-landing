@@ -8,10 +8,12 @@ Usage:
     uv run hover-test
 """
 
+import csv
 import json
 import sys
 import time
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -316,7 +318,19 @@ def main():
                     time.sleep(CONTROL_DT)
 
                 # MPC hover loop
-                print("MPC hover active — Esc to land")
+                log_dir = Path(__file__).resolve().parent / "logs"
+                log_dir.mkdir(exist_ok=True)
+                log_path = log_dir / f"hover_{datetime.now():%Y%m%d_%H%M%S}.csv"
+                log_file = open(log_path, "w", newline="")
+                log_writer = csv.writer(log_file)
+                log_writer.writerow([
+                    "t", "px", "py", "pz", "vx", "vy", "vz",
+                    "tx", "ty", "tz", "ax", "ay", "az",
+                    "roll", "pitch", "thrust",
+                    "Qp", "Qv", "Qf", "R", "a_max", "v_max",
+                ])
+                t0_mpc = time.monotonic()
+                print(f"MPC hover active — Esc to land  (log: {log_path.name})")
                 step = 0
                 while not stop.is_set():
                     loop_start = time.monotonic()
@@ -340,9 +354,23 @@ def main():
                     roll, pitch, yawrate, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az)
                     commander.send_setpoint(roll, pitch, yawrate, thrust)
 
+                    # Log every step to CSV
+                    pos = drone.pos
+                    vel = drone.vel
+                    log_writer.writerow([
+                        f"{time.monotonic() - t0_mpc:.3f}",
+                        f"{pos[0]:.4f}", f"{pos[1]:.4f}", f"{pos[2]:.4f}",
+                        f"{vel[0]:.4f}", f"{vel[1]:.4f}", f"{vel[2]:.4f}",
+                        f"{TARGET[0]:.4f}", f"{TARGET[1]:.4f}", f"{TARGET[2]:.4f}",
+                        f"{ax:.4f}", f"{ay:.4f}", f"{az:.4f}",
+                        f"{roll:.2f}", f"{pitch:.2f}", f"{thrust}",
+                        f"{config.Q_diag[0]:.2f}", f"{config.Q_diag[1]:.2f}",
+                        f"{config.Qf_diag[0]:.2f}", f"{config.R_diag[0]:.2f}",
+                        f"{config.a_max:.2f}", f"{config.v_max:.2f}",
+                    ])
+
                     step += 1
                     if step % 5 == 0:
-                        pos = drone.pos
                         err = [TARGET[i] - pos[i] for i in range(3)]
                         sys.stdout.write(
                             f"\rpos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
@@ -367,6 +395,7 @@ def main():
             finally:
                 commander.send_stop_setpoint()
                 commander.send_notify_setpoint_stop()
+                log_file.close()
                 time.sleep(0.1)
                 pub.loop_stop()
                 pub.disconnect()
