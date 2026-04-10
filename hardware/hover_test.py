@@ -49,11 +49,15 @@ DRONE_TOPIC = "rb/crazyflie"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
 
-TARGET_STEP = 0.1  # meters per keypress (WASD/QE)
+TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
 
 RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
+
+# Pressed-key tracking for smooth target movement
+pressed_keys = set()
+keys_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +212,33 @@ class DroneStateReader:
         self._client.disconnect()
 
 
+def on_release(key):
+    with keys_lock:
+        try:
+            pressed_keys.discard(key.char.lower())
+        except AttributeError:
+            pressed_keys.discard(key)
+
+
+def update_target(dt):
+    """Move TARGET continuously based on held keys."""
+    with keys_lock:
+        keys = set(pressed_keys)
+    step = TARGET_SPEED * dt
+    if 'w' in keys:
+        TARGET[0] += step
+    if 's' in keys:
+        TARGET[0] -= step
+    if 'd' in keys:
+        TARGET[2] += step
+    if 'a' in keys:
+        TARGET[2] -= step
+    if 'e' in keys:
+        TARGET[1] = min(TARGET[1] + step, 2.0)
+    if 'q' in keys:
+        TARGET[1] = max(TARGET[1] - step, 0.3)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -278,33 +309,24 @@ def main():
                 tuner.adjust(+1)
             if key == keyboard.Key.down:
                 tuner.adjust(-1)
-            try:
-                if hasattr(key, 'char') and key.char:
-                    c = key.char.lower()
-                    if c in '123456':
-                        tuner.select(int(c) - 1)
-                    elif c == 'w':
-                        TARGET[0] += TARGET_STEP
-                    elif c == 's':
-                        TARGET[0] -= TARGET_STEP
-                    elif c == 'd':
-                        TARGET[2] += TARGET_STEP
-                    elif c == 'a':
-                        TARGET[2] -= TARGET_STEP
-                    elif c == 'e':
-                        TARGET[1] = min(TARGET[1] + TARGET_STEP, 2.0)
-                    elif c == 'q':
-                        TARGET[1] = max(TARGET[1] - TARGET_STEP, 0.3)
-            except AttributeError:
-                pass
+            # Track held keys for smooth target movement
+            with keys_lock:
+                try:
+                    if hasattr(key, 'char') and key.char:
+                        c = key.char.lower()
+                        if c in '123456':
+                            tuner.select(int(c) - 1)
+                        pressed_keys.add(c)
+                except AttributeError:
+                    pressed_keys.add(key)
 
-        listener = keyboard.Listener(on_press=on_press)
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.start()
 
         print()
         print(f"=== Hover Test — target {TARGET} ===")
         print("Press SPACE to take off, Esc to abort")
-        print("WASD = move XZ, Q/E = altitude (0.1m steps)")
+        print("WASD = move XZ, Q/E = altitude (hold for smooth movement)")
         print("MPC tuning: 1-6 select, Up/Down adjust")
         print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_max 6:v_max")
         print("=" * 46)
@@ -366,6 +388,7 @@ def main():
                         continue
 
                     mpc = tuner.maybe_rebuild(mpc)
+                    update_target(CONTROL_DT)
                     x0 = optitrack_to_mpc_state(drone)
                     ref = static_reference(TARGET, N, CONTROL_DT)
                     u_opt = mpc.compute(x0, ref)
