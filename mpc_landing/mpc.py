@@ -1,7 +1,7 @@
 """
 Linear MPC controller for quadrotor tracking and landing.
 
-Model: 3D double integrator (decoupled per axis)
+Model: 3D double integrator with gravity (decoupled per axis)
     State:  [px, vx, py, vy, pz, vz]  (6 states)
     Input:  [ax, ay, az]               (3 inputs = desired accelerations)
 
@@ -34,7 +34,7 @@ class MPCConfig:
     R_diag: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
 
     # Acceleration limits (m/s^2)
-    a_max: float = 5.0
+    a_max: float = 15.0
 
     # Velocity limits (m/s) — set None to disable
     v_max: float = 2.0
@@ -57,6 +57,15 @@ class MPCController:
             self.A[2*i, 2*i+1] = dt
             self.B[2*i, i] = 0.5 * dt**2
             self.B[2*i+1, i] = dt
+
+        # Gravity affine term: only affects py (idx 2) and vy (idx 3)
+        self.g_vec = np.zeros(nx)
+        self.g_vec[2] = -0.5 * 9.81 * dt**2
+        self.g_vec[3] = -9.81 * dt
+
+        # Equilibrium input: ay = G to counteract gravity (hover = zero R cost)
+        self.u_eq = np.zeros(nu)
+        self.u_eq[1] = 9.81
 
         self.nx = nx
         self.nu = nu
@@ -84,11 +93,11 @@ class MPCController:
         for k in range(N):
             err = self.x_var[k] - self.ref_param[k]
             cost += cp.quad_form(err, Q)
-            cost += cp.quad_form(self.u_var[k], R)
+            cost += cp.quad_form(self.u_var[k] - self.u_eq, R)
 
             # Dynamics
             constraints.append(
-                self.x_var[k + 1] == self.A @ self.x_var[k] + self.B @ self.u_var[k]
+                self.x_var[k + 1] == self.A @ self.x_var[k] + self.B @ self.u_var[k] + self.g_vec
             )
 
             # Acceleration limits

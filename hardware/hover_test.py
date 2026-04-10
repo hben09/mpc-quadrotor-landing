@@ -66,7 +66,7 @@ def optitrack_to_mpc_state(rb):
 def mpc_accel_to_cflib_setpoint(ax, ay, az):
     pitch_deg = float(np.clip(np.degrees(ax / G), -MAX_TILT_DEG, MAX_TILT_DEG))
     roll_deg = float(np.clip(np.degrees(az / G), -MAX_TILT_DEG, MAX_TILT_DEG))
-    thrust_pwm = int(np.clip(HOVER_PWM * (1.0 + ay / G), 0, 60000))
+    thrust_pwm = int(np.clip(HOVER_PWM * (ay / G), 0, 60000))
     return roll_deg, pitch_deg, 0.0, thrust_pwm
 
 
@@ -343,8 +343,11 @@ def main():
                     step += 1
                     if step % 5 == 0:
                         pos = drone.pos
+                        err = [TARGET[i] - pos[i] for i in range(3)]
                         sys.stdout.write(
                             f"\rpos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
+                            f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
+                            f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
                             f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
                             f"| {tuner.status_line()}  \033[K"
                         )
