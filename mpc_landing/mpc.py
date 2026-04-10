@@ -1,9 +1,14 @@
 """
-Linear MPC controller for quadrotor tracking and landing.
+Offset-free MPC controller for quadrotor tracking and landing.
 
-Model: 3D double integrator with gravity (decoupled per axis)
-    State:  [px, vx, py, vy, pz, vz]  (6 states)
-    Input:  [ax, ay, az]               (3 inputs = desired accelerations)
+Model: 3D double integrator with gravity + vertical disturbance
+    State:  [px, vx, py, vy, pz, vz, d]  (7 states, d = vertical disturbance)
+    Input:  [ax, ay, az]                  (3 inputs = desired accelerations)
+
+The disturbance state `d` is a constant bias on vertical acceleration,
+estimated each step from the prediction error. It absorbs model mismatch
+(battery drift, weight changes) so the optimizer plans around it —
+eliminating steady-state altitude error without an external integrator.
 
 Solves a finite-horizon QP at each timestep. Only the first control input
 is applied. Accelerations are converted to pitch/roll/throttle outside
@@ -47,16 +52,23 @@ class MPCController:
         self._build_problem()
 
     def _build_dynamics(self):
-        """Construct discrete-time A, B matrices for 3D double integrator."""
+        """Construct discrete-time A, B matrices for 3D double integrator + disturbance."""
         dt = self.cfg.dt
-        nx, nu = 6, 3
+        nx, nu = 7, 3  # 6 physical states + 1 disturbance
 
+        # Physical double integrator (first 6 states)
         self.A = np.eye(nx)
         self.B = np.zeros((nx, nu))
         for i in range(3):
             self.A[2*i, 2*i+1] = dt
             self.B[2*i, i] = 0.5 * dt**2
             self.B[2*i+1, i] = dt
+
+        # Disturbance state d (idx 6): constant bias on vertical acceleration
+        # d[k+1] = d[k]  (already 1.0 on diagonal from np.eye)
+        # d affects py and vy the same way as ay
+        self.A[2, 6] = 0.5 * dt**2  # py += 0.5*d*dt^2
+        self.A[3, 6] = dt           # vy += d*dt
 
         # Gravity affine term: only affects py (idx 2) and vy (idx 3)
         self.g_vec = np.zeros(nx)
@@ -66,6 +78,10 @@ class MPCController:
         # Equilibrium input: ay = G to counteract gravity (hover = zero R cost)
         self.u_eq = np.zeros(nu)
         self.u_eq[1] = 9.81
+
+        # Disturbance estimator gain (simple single-step correction)
+        self._d_hat = 0.0
+        self._x_pred = None
 
         self.nx = nx
         self.nu = nu
@@ -83,8 +99,9 @@ class MPCController:
         self.x0_param = cp.Parameter(nx)
         self.ref_param = cp.Parameter((N + 1, nx))
 
-        Q = np.diag(self.cfg.Q_diag)
-        Qf = np.diag(self.cfg.Qf_diag)
+        # Extend Q/Qf with zero weight on disturbance state (idx 6)
+        Q = np.diag(self.cfg.Q_diag + [0.0])
+        Qf = np.diag(self.cfg.Qf_diag + [0.0])
         R = np.diag(self.cfg.R_diag)
 
         cost = 0
@@ -127,26 +144,49 @@ class MPCController:
             np.array([ax, ay, az]) — first optimal control input.
             Returns zeros if the solver fails.
         """
-        self.x0_param.value = x0
-        self.ref_param.value = reference
+        # Update disturbance estimate from prediction error
+        if self._x_pred is not None:
+            # Prediction error on vy (index 3) — most responsive to thrust bias
+            vy_error = x0[3] - self._x_pred[3]
+            # Low-pass update: d_hat += alpha * (error / dt)
+            self._d_hat += 0.3 * (vy_error / self.cfg.dt)
+
+        # Augment state with disturbance estimate
+        x0_aug = np.append(x0, self._d_hat)
+
+        # Augment reference with zero disturbance target
+        ref_aug = np.zeros((reference.shape[0], self.nx))
+        ref_aug[:, :6] = reference
+
+        self.x0_param.value = x0_aug
+        self.ref_param.value = ref_aug
 
         try:
             self.problem.solve(solver=cp.OSQP, warm_start=True)
 
             if self.problem.status in ('optimal', 'optimal_inaccurate'):
+                # Store predicted next state for disturbance estimation
+                self._x_pred = self.x_var.value[1, :6]
                 return self.u_var.value[0]
             else:
                 print(f"MPC solver status: {self.problem.status}")
+                self._x_pred = None
                 return np.zeros(3)
         except cp.SolverError as e:
             print(f"MPC solver error: {e}")
+            self._x_pred = None
             return np.zeros(3)
 
     def get_planned_trajectory(self):
         """Return the full planned state trajectory (useful for visualization)."""
         if self.x_var.value is not None:
-            return self.x_var.value
+            return self.x_var.value[:, :6]  # exclude disturbance state
         return None
+
+    @property
+    def disturbance(self):
+        """Current disturbance estimate (m/s^2 bias on vertical acceleration)."""
+        return self._d_hat
 
     def get_planned_inputs(self):
         """Return the full planned input sequence (useful for visualization)."""

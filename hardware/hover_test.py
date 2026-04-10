@@ -147,7 +147,9 @@ class ParamTuner:
             self._pending = False
             config = self._config
         try:
-            return MPCController(config)
+            new_mpc = MPCController(config)
+            new_mpc._d_hat = mpc._d_hat  # preserve disturbance estimate
+            return new_mpc
         except Exception as e:
             print(f"\nMPC rebuild failed: {e}")
             return mpc
@@ -327,6 +329,7 @@ def main():
                     "t", "px", "py", "pz", "vx", "vy", "vz",
                     "tx", "ty", "tz", "ax", "ay", "az",
                     "roll", "pitch", "thrust",
+                    "d_hat",
                     "Qp", "Qv", "Qf", "R", "a_max", "v_max",
                 ])
                 t0_mpc = time.monotonic()
@@ -364,6 +367,7 @@ def main():
                         f"{TARGET[0]:.4f}", f"{TARGET[1]:.4f}", f"{TARGET[2]:.4f}",
                         f"{ax:.4f}", f"{ay:.4f}", f"{az:.4f}",
                         f"{roll:.2f}", f"{pitch:.2f}", f"{thrust}",
+                        f"{mpc.disturbance:.4f}",
                         f"{config.Q_diag[0]:.2f}", f"{config.Q_diag[1]:.2f}",
                         f"{config.Qf_diag[0]:.2f}", f"{config.R_diag[0]:.2f}",
                         f"{config.a_max:.2f}", f"{config.v_max:.2f}",
