@@ -71,6 +71,99 @@ def mpc_accel_to_cflib_setpoint(ax, ay, az):
 
 
 # ---------------------------------------------------------------------------
+# Runtime MPC parameter tuner (keyboard-driven)
+# ---------------------------------------------------------------------------
+TUNABLE_PARAMS = [
+    # (short_name, step, min, max, getter, setter)
+    # getter/setter operate on an MPCConfig instance
+    ("Qp",  2.0,   1.0,  100.0),  # 1: Q position
+    ("Qv",  0.5,   0.1,   20.0),  # 2: Q velocity
+    ("Qf", 20.0,  10.0,  500.0),  # 3: Qf terminal
+    ("R",   0.5,  0.01,   20.0),  # 4: R effort
+    ("a",   0.5,   1.0,   15.0),  # 5: a_max
+    ("v",   0.25,  0.5,    5.0),  # 6: v_max
+]
+
+
+class ParamTuner:
+    def __init__(self, config: MPCConfig):
+        self._config = config
+        self._lock = threading.Lock()
+        self._pending = False
+        self._selected = 0
+
+    def _get_value(self, idx):
+        c = self._config
+        if idx == 0:
+            return c.Q_diag[0]
+        elif idx == 1:
+            return c.Q_diag[1]
+        elif idx == 2:
+            return c.Qf_diag[0]
+        elif idx == 3:
+            return c.R_diag[0]
+        elif idx == 4:
+            return c.a_max
+        elif idx == 5:
+            return c.v_max
+
+    def _set_value(self, idx, val):
+        c = self._config
+        if idx == 0:
+            c.Q_diag = [val, c.Q_diag[1], val, c.Q_diag[3], val, c.Q_diag[5]]
+        elif idx == 1:
+            c.Q_diag[1] = val
+            c.Q_diag[3] = val
+            c.Q_diag[5] = val
+        elif idx == 2:
+            c.Qf_diag = [val, val / 10, val, val / 10, val, val / 10]
+        elif idx == 3:
+            c.R_diag = [val, val, val]
+        elif idx == 4:
+            c.a_max = val
+        elif idx == 5:
+            c.v_max = val
+
+    def select(self, index):
+        with self._lock:
+            if 0 <= index < len(TUNABLE_PARAMS):
+                self._selected = index
+
+    def adjust(self, direction):
+        with self._lock:
+            p = TUNABLE_PARAMS[self._selected]
+            _, step, lo, hi = p
+            val = self._get_value(self._selected)
+            val = max(lo, min(hi, val + direction * step))
+            self._set_value(self._selected, val)
+            self._pending = True
+
+    def maybe_rebuild(self, mpc):
+        with self._lock:
+            if not self._pending:
+                return mpc
+            self._pending = False
+            config = self._config
+        try:
+            return MPCController(config)
+        except Exception as e:
+            print(f"\nMPC rebuild failed: {e}")
+            return mpc
+
+    def status_line(self):
+        with self._lock:
+            parts = []
+            for i, (name, _, _, _) in enumerate(TUNABLE_PARAMS):
+                val = self._get_value(i)
+                txt = f"{val:.4g}"
+                if i == self._selected:
+                    parts.append(f">{name}={txt}<")
+                else:
+                    parts.append(f"{name}={txt}")
+            return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # MQTT state reader (drone only)
 # ---------------------------------------------------------------------------
 class DroneStateReader:
@@ -135,6 +228,7 @@ def main():
         # MPC
         config = MPCConfig(dt=CONTROL_DT, horizon=25)
         mpc = MPCController(config)
+        tuner = ParamTuner(config)
         N = config.horizon
 
         # MQTT
@@ -174,6 +268,15 @@ def main():
             if key == keyboard.Key.esc:
                 stop.set()
                 go.set()  # unblock wait
+            if key == keyboard.Key.up:
+                tuner.adjust(+1)
+            if key == keyboard.Key.down:
+                tuner.adjust(-1)
+            try:
+                if hasattr(key, 'char') and key.char and key.char in '123456':
+                    tuner.select(int(key.char) - 1)
+            except AttributeError:
+                pass
 
         listener = keyboard.Listener(on_press=on_press)
         listener.start()
@@ -181,7 +284,9 @@ def main():
         print()
         print(f"=== Hover Test — target {TARGET} ===")
         print("Press SPACE to take off, Esc to abort")
-        print("=" * 42)
+        print("MPC tuning: 1-6 select, Up/Down adjust")
+        print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_max 6:v_max")
+        print("=" * 46)
 
         go.wait()
         if stop.is_set():
@@ -226,6 +331,7 @@ def main():
                         time.sleep(CONTROL_DT)
                         continue
 
+                    mpc = tuner.maybe_rebuild(mpc)
                     x0 = optitrack_to_mpc_state(drone)
                     ref = static_reference(TARGET, N, CONTROL_DT)
                     u_opt = mpc.compute(x0, ref)
@@ -239,7 +345,8 @@ def main():
                         pos = drone.pos
                         sys.stdout.write(
                             f"\rpos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
-                            f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d}  "
+                            f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
+                            f"| {tuner.status_line()}  \033[K"
                         )
                         sys.stdout.flush()
 
