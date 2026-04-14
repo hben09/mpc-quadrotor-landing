@@ -2,7 +2,7 @@
 Real-time 3D viewer for Crazyflie drone position via MQTT.
 
 Subscribes to OptiTrack rigid-body data over MQTT and displays the drone
-(and optionally the limo777 ground vehicle) in a PyVista 3D scene with
+(and optionally the landing target) in a PyVista 3D scene with
 RASTIC arena boundaries and a flight trail.
 
 Usage:
@@ -28,13 +28,13 @@ from mpc_landing.mqtt.parser import MQTTRigidBody, RigidBodyTracker
 BROKER = "rasticvm.internal"
 PORT = 1883
 DRONE_TOPIC = "rb/crazyflie"
-LIMO_TOPIC = "rb/limo777"
+LANDING_TOPIC = "rb/landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
 CALLBACK_MS = 50  # 20 Hz
 MAX_TRAIL_POINTS = 2000
 DRONE_RADIUS = 0.05
-LIMO_RADIUS = 0.08
+LANDING_RADIUS = 0.10
 AXIS_LENGTH = 0.15
 
 
@@ -45,7 +45,7 @@ class TrackedState:
     def __init__(self):
         self._lock = threading.Lock()
         self._drone: MQTTRigidBody | None = None
-        self._limo: MQTTRigidBody | None = None
+        self._landing: MQTTRigidBody | None = None
         self._mpc_target: list[float] | None = None
         self._mpc_traj: list[list[float]] | None = None
 
@@ -53,9 +53,9 @@ class TrackedState:
         with self._lock:
             self._drone = rb
 
-    def set_limo(self, rb: MQTTRigidBody):
+    def set_landing(self, rb: MQTTRigidBody):
         with self._lock:
-            self._limo = rb
+            self._landing = rb
 
     def set_mpc_target(self, pos: list[float]):
         with self._lock:
@@ -67,7 +67,7 @@ class TrackedState:
 
     def get(self) -> tuple[MQTTRigidBody | None, MQTTRigidBody | None]:
         with self._lock:
-            return self._drone, self._limo
+            return self._drone, self._landing
 
     def get_mpc(self) -> tuple[list[float] | None, list[list[float]] | None]:
         with self._lock:
@@ -88,11 +88,16 @@ def mqtt_to_pyvista(pos):
 def build_arena_wireframe():
     """RASTIC arena as a PyVista wireframe box."""
     b = ARENA_BOUNDS
-    return pv.Box(bounds=[
-        b['x_min'], b['x_max'],
-        -b['z_max'], -b['z_min'],
-        b['y_min'], b['y_max'],
-    ])
+    return pv.Box(
+        bounds=[
+            b["x_min"],
+            b["x_max"],
+            -b["z_max"],
+            -b["z_min"],
+            b["y_min"],
+            b["y_max"],
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,24 +157,24 @@ def build_orientation_axes(pv_pos, rot_quat):
 # ---------------------------------------------------------------------------
 def start_mqtt(state: TrackedState, broker: str, port: int):
     drone_tracker = RigidBodyTracker()
-    limo_tracker = RigidBodyTracker()
+    landing_tracker = RigidBodyTracker()
 
     def on_connect(client, userdata, flags, reason_code, properties):
         print(f"MQTT connected (rc={reason_code})")
         client.subscribe(DRONE_TOPIC)
-        client.subscribe(LIMO_TOPIC)
+        client.subscribe(LANDING_TOPIC)
         client.subscribe(MPC_TARGET_TOPIC)
         client.subscribe(MPC_TRAJ_TOPIC)
-        print(f"Subscribed to '{DRONE_TOPIC}', '{LIMO_TOPIC}', 'mpc/#'")
+        print(f"Subscribed to '{DRONE_TOPIC}', '{LANDING_TOPIC}', 'mpc/#'")
 
     def on_message(client, userdata, msg):
         try:
             if msg.topic == DRONE_TOPIC:
                 rb = drone_tracker.update(msg.payload.decode())
                 state.set_drone(rb)
-            elif msg.topic == LIMO_TOPIC:
-                rb = limo_tracker.update(msg.payload.decode())
-                state.set_limo(rb)
+            elif msg.topic == LANDING_TOPIC:
+                rb = landing_tracker.update(msg.payload.decode())
+                state.set_landing(rb)
             elif msg.topic == MPC_TARGET_TOPIC:
                 data = json.loads(msg.payload.decode())
                 state.set_mpc_target(data["pos"])
@@ -198,8 +203,12 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="MQTT 3D Drone Viewer")
-    parser.add_argument("--broker", default=BROKER, help=f"MQTT broker (default: {BROKER})")
-    parser.add_argument("--port", type=int, default=PORT, help=f"MQTT port (default: {PORT})")
+    parser.add_argument(
+        "--broker", default=BROKER, help=f"MQTT broker (default: {BROKER})"
+    )
+    parser.add_argument(
+        "--port", type=int, default=PORT, help=f"MQTT port (default: {PORT})"
+    )
     args = parser.parse_args()
 
     state = TrackedState()
@@ -221,9 +230,9 @@ def main():
     drone_mesh = pv.Sphere(radius=DRONE_RADIUS, center=(0, 0, 0))
     plotter.add_mesh(drone_mesh, color="blue", name="drone")
 
-    # Limo sphere
-    limo_mesh = pv.Sphere(radius=LIMO_RADIUS, center=(0, 0, 0))
-    plotter.add_mesh(limo_mesh, color="red", name="limo", opacity=0.6)
+    # Landing sphere
+    landing_mesh = pv.Sphere(radius=LANDING_RADIUS, center=(0, 0, 0))
+    plotter.add_mesh(landing_mesh, color="yellow", name="landing", opacity=0.7)
 
     # MPC target sphere
     target_mesh = pv.Sphere(radius=0.06, center=(0, 0, 0))
@@ -235,7 +244,9 @@ def main():
     trail_points: list[tuple[float, float, float]] = []
 
     # HUD
-    plotter.add_text("Waiting for MQTT data...", position="upper_right", font_size=10, name="hud")
+    plotter.add_text(
+        "Waiting for MQTT data...", position="upper_right", font_size=10, name="hud"
+    )
 
     # Camera and axes
     plotter.camera_position = "xz"
@@ -243,37 +254,46 @@ def main():
 
     # --- Timer callback (20 Hz) ---
     def update_callback(_step=None):
-        drone, limo = state.get()
+        drone, landing = state.get()
+        mpc_target, mpc_traj = state.get_mpc()
 
-        if drone is None:
-            return
+        # Update drone
+        if drone is not None:
+            pv_pos = mqtt_to_pyvista(drone.pos)
+            drone_mesh.copy_from(pv.Sphere(radius=DRONE_RADIUS, center=pv_pos))
 
-        # Update drone sphere
-        pv_pos = mqtt_to_pyvista(drone.pos)
-        drone_mesh.copy_from(pv.Sphere(radius=DRONE_RADIUS, center=pv_pos))
+            try:
+                axes = build_orientation_axes(pv_pos, drone.rot)
+                plotter.add_mesh(
+                    axes, scalars="colors", rgb=True, line_width=3, name="axes"
+                )
+            except Exception:
+                pass  # Skip if quaternion is degenerate
 
-        # Update orientation axes
-        try:
-            axes = build_orientation_axes(pv_pos, drone.rot)
-            plotter.add_mesh(axes, scalars="colors", rgb=True, line_width=3, name="axes")
-        except Exception:
-            pass  # Skip if quaternion is degenerate
+            trail_points.append(pv_pos)
+            if len(trail_points) > MAX_TRAIL_POINTS:
+                trail_points.pop(0)
+            if len(trail_points) >= 2:
+                trail = build_trail_mesh(trail_points)
+                plotter.add_mesh(trail, color="green", line_width=2, name="trail")
 
-        # Update trail
-        trail_points.append(pv_pos)
-        if len(trail_points) > MAX_TRAIL_POINTS:
-            trail_points.pop(0)
-        if len(trail_points) >= 2:
-            trail = build_trail_mesh(trail_points)
-            plotter.add_mesh(trail, color="green", line_width=2, name="trail")
-
-        # Update limo
-        if limo is not None:
-            limo_pv = mqtt_to_pyvista(limo.pos)
-            limo_mesh.copy_from(pv.Sphere(radius=LIMO_RADIUS, center=limo_pv))
+        # Update landing
+        if landing is not None:
+            landing_pv = mqtt_to_pyvista(landing.pos)
+            landing_mesh.copy_from(pv.Sphere(radius=LANDING_RADIUS, center=landing_pv))
+            try:
+                landing_axes = build_orientation_axes(landing_pv, landing.rot)
+                plotter.add_mesh(
+                    landing_axes,
+                    scalars="colors",
+                    rgb=True,
+                    line_width=3,
+                    name="landing_axes",
+                )
+            except Exception:
+                pass
 
         # Update MPC target + trajectory
-        mpc_target, mpc_traj = state.get_mpc()
         if mpc_target is not None:
             tgt_pv = mqtt_to_pyvista(mpc_target)
             target_mesh.copy_from(pv.Sphere(radius=0.06, center=tgt_pv))
@@ -288,12 +308,19 @@ def main():
         if mpc_target is not None:
             t = mpc_target
             mpc_line = f"MPC tgt: [{t[0]:+.3f}, {t[1]:+.3f}, {t[2]:+.3f}]"
+        if drone is not None:
+            drone_lines = (
+                f"pos: [{drone.pos[0]:+.3f}, {drone.pos[1]:+.3f}, {drone.pos[2]:+.3f}]\n"
+                f"vel: [{drone.vel[0]:+.3f}, {drone.vel[1]:+.3f}, {drone.vel[2]:+.3f}]\n"
+                f"euler: [{drone.euler[0]:+.2f}, {drone.euler[1]:+.2f}, {drone.euler[2]:+.2f}]\n"
+            )
+        else:
+            drone_lines = "drone: --\n"
         plotter.add_text(
-            f"pos: [{drone.pos[0]:+.3f}, {drone.pos[1]:+.3f}, {drone.pos[2]:+.3f}]\n"
-            f"vel: [{drone.vel[0]:+.3f}, {drone.vel[1]:+.3f}, {drone.vel[2]:+.3f}]\n"
-            f"euler: [{drone.euler[0]:+.2f}, {drone.euler[1]:+.2f}, {drone.euler[2]:+.2f}]\n"
-            f"{mpc_line}",
-            position="upper_right", font_size=10, name="hud",
+            f"{drone_lines}{mpc_line}",
+            position="upper_right",
+            font_size=10,
+            name="hud",
         )
 
     plotter.add_timer_event(
@@ -302,7 +329,7 @@ def main():
 
     print("\n=== MQTT Drone Viewer ===")
     print(f"Broker: {args.broker}:{args.port}")
-    print(f"Topics: {DRONE_TOPIC}, {LIMO_TOPIC}")
+    print(f"Topics: {DRONE_TOPIC}, {LANDING_TOPIC}")
     print("Close the window to exit.")
     print("=" * 26)
 
