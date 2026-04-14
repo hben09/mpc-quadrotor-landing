@@ -109,6 +109,8 @@ OptiTrack and MPC use the same axis order (no swap needed). Crazyflow swaps Y/Z 
 - `euler[1]` — **Yaw** (rotation about Y/up): + = left (CCW from above)
 - `euler[2]` — **Pitch** (rotation about Z/right): + = nose up (backward pitch)
 
+⚠ **`euler[1]` is gimbal-locked to ±π/2** — scipy's `as_euler("xyz")` clamps the middle angle. The XYZ convention is kept for parity with Motive's UI display, but for any control or feedback that needs full-range yaw (e.g. body-frame rotation, yaw P-controller), use **`MQTTRigidBody.yaw`** instead. It's computed directly from the quaternion via `atan2` and gives a continuous angle in `[-π, +π]` regardless of roll/pitch.
+
 ## Sim vs Hardware Control Interface
 
 MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation to actuator commands differs between sim and hardware:

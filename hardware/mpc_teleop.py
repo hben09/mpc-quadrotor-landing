@@ -30,6 +30,7 @@ from mpc_landing import MPCController, MPCConfig
 from mpc_landing.mqtt.parser import RigidBodyTracker
 from mpc_landing.reference import static_reference
 from mpc_landing.supervisor import SafeCommander
+from mpc_landing.yaw import compute_yawrate, wrap_to_pi
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -42,6 +43,8 @@ HOVER_PWM = 45000
 HOVER_ALTITUDE = 1.0
 MAX_TILT_DEG = 10.0
 TARGET = [0.0, HOVER_ALTITUDE, 0.0]
+TARGET_YAW = 0.0                 # radians, OptiTrack frame (CCW+)
+YAW_SPEED = np.radians(60.0)     # rad/s while Left/Right held
 
 MQTT_BROKER = "rasticvm.internal"
 MQTT_PORT = 1883
@@ -80,7 +83,7 @@ def mpc_accel_to_cflib_setpoint(ax, ay, az, yaw):
     pitch_deg = float(np.clip(np.degrees(a_fwd / G), -MAX_TILT_DEG, MAX_TILT_DEG))
     roll_deg = float(np.clip(np.degrees(a_right / G), -MAX_TILT_DEG, MAX_TILT_DEG))
     thrust_pwm = int(np.clip(HOVER_PWM * (ay / G), 0, 60000))
-    return roll_deg, pitch_deg, 0.0, thrust_pwm
+    return roll_deg, pitch_deg, thrust_pwm
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +229,8 @@ def on_release(key):
 
 
 def update_target(dt):
-    """Move TARGET continuously based on held keys."""
+    """Move TARGET (and TARGET_YAW) continuously based on held keys."""
+    global TARGET_YAW
     with keys_lock:
         keys = set(pressed_keys)
     step = TARGET_SPEED * dt
@@ -238,10 +242,15 @@ def update_target(dt):
         TARGET[2] += step
     if 'a' in keys:
         TARGET[2] -= step
-    if 'e' in keys:
+    if 'x' in keys:
         TARGET[1] = min(TARGET[1] + step, 2.0)
-    if 'q' in keys:
+    if 'z' in keys:
         TARGET[1] = max(TARGET[1] - step, 0.3)
+    if 'q' in keys:
+        TARGET_YAW += YAW_SPEED * dt       # q = left = CCW = + in OptiTrack
+    if 'e' in keys:
+        TARGET_YAW -= YAW_SPEED * dt       # e = right = CW
+    TARGET_YAW = wrap_to_pi(TARGET_YAW)
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +307,7 @@ def main():
         print(" OK")
 
         # Publish target so mqtt_viewer shows it
-        pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET}))
+        pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET, "yaw": TARGET_YAW}))
 
         # Wait for SPACE
         go = threading.Event()
@@ -331,7 +340,7 @@ def main():
         print()
         print(f"=== MPC Teleop — target {TARGET} ===")
         print("Press SPACE to take off, Esc to abort")
-        print("WASD = move XZ, Q/E = altitude (hold for smooth movement)")
+        print("WASD = move XZ, Z/X = altitude, Q/E = yaw target (hold)")
         print("MPC tuning: 1-6 select, Up/Down adjust")
         print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_max 6:v_max")
         print("=" * 46)
@@ -373,7 +382,7 @@ def main():
                     "t", "px", "py", "pz", "vx", "vy", "vz",
                     "tx", "ty", "tz", "ax", "ay", "az",
                     "roll", "pitch", "thrust",
-                    "d_hat", "yaw",
+                    "d_hat", "yaw", "target_yaw", "yawrate",
                     "Qp", "Qv", "Qf", "R", "a_max", "v_max",
                 ])
                 t0_mpc = time.monotonic()
@@ -399,8 +408,9 @@ def main():
                     u_opt = mpc.compute(x0, ref)
                     ax, ay, az = u_opt
 
-                    yaw = drone.euler[1]
-                    roll, pitch, yawrate, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az, yaw)
+                    yaw = drone.yaw
+                    roll, pitch, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az, yaw)
+                    yawrate = compute_yawrate(yaw, TARGET_YAW)
                     commander.send_setpoint(roll, pitch, yawrate, thrust)
 
                     # Log every step to CSV
@@ -414,6 +424,7 @@ def main():
                         f"{ax:.4f}", f"{ay:.4f}", f"{az:.4f}",
                         f"{roll:.2f}", f"{pitch:.2f}", f"{thrust}",
                         f"{mpc.disturbance:.4f}", f"{yaw:.4f}",
+                        f"{TARGET_YAW:.4f}", f"{yawrate:.2f}",
                         f"{config.Q_diag[0]:.2f}", f"{config.Q_diag[1]:.2f}",
                         f"{config.Qf_diag[0]:.2f}", f"{config.R_diag[0]:.2f}",
                         f"{config.a_max:.2f}", f"{config.v_max:.2f}",
@@ -427,12 +438,13 @@ def main():
                             f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
                             f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
                             f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
-                            f"yaw:{np.degrees(yaw):+5.1f}° "
+                            f"yaw:{np.degrees(yaw):+5.1f}°→{np.degrees(TARGET_YAW):+5.1f}° "
+                            f"yr:{yawrate:+5.1f}°/s "
                             f"| {tuner.status_line()}  \033[K"
                         )
                         sys.stdout.flush()
 
-                        pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET}))
+                        pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET, "yaw": TARGET_YAW}))
                         planned = mpc.get_planned_trajectory()
                         if planned is not None:
                             pts = [[float(r[0]), float(r[2]), float(r[4])] for r in planned]

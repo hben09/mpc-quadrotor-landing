@@ -4,6 +4,7 @@ from mpc_landing.mpc import MPCController, MPCConfig
 from mpc_landing.reference import tracking_reference, landing_reference, static_reference
 from mpc_landing.boundary import check_boundary, ARENA_BOUNDS
 from mpc_landing.supervisor import SafeCommander
+from mpc_landing.yaw import compute_yawrate, wrap_to_pi
 
 __all__ = [
     "MPCController",
@@ -14,4 +15,6 @@ __all__ = [
     "check_boundary",
     "ARENA_BOUNDS",
     "SafeCommander",
+    "compute_yawrate",
+    "wrap_to_pi",
 ]
