@@ -22,7 +22,7 @@ sim/                    # Crazyflow simulation environment (workspace member)
   teleop.py             # Keyboard teleoperation (attitude control, pynput)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
-  keyboard_control.py   # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
+  teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
   mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
   thrust_test.py        # Thrust calibration utility for Crazyflie
 
@@ -33,7 +33,7 @@ archive/                # Legacy code kept for reference
 ### Entry Points
 
 All scripts are runnable via `uv run <command>`:
-- `keyboard-control` — manual flight with physical Crazyflie
+- `hw-teleop` — manual flight with physical Crazyflie
 - `mqtt-viewer` — real-time 3D drone position viewer (OptiTrack via MQTT)
 - `thrust-test` — motor thrust calibration
 - `sim-mpc` — MPC simulation with virtual target
@@ -62,11 +62,11 @@ Usage (context manager):
 with SafeCommander(cf.commander) as commander:
     commander.send_setpoint(roll, pitch, yawrate, thrust)
 ```
-Currently used in `hardware/keyboard_control.py`.
+Currently used in `hardware/teleop.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
-- Hardware control currently via `hardware/keyboard_control.py` (manual attitude teleoperation)
+- Hardware control currently via `hardware/teleop.py` (manual attitude teleoperation)
 - Next step: integrate MPC with cflib for autonomous hardware flight
 - MPC state: [px, vx, py, vy, pz, vz], control: [ax, ay, az], horizon: 25 steps (0.5s)
 
@@ -116,7 +116,7 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
 | Attitude units | Radians | Degrees |
 | Yaw | Absolute angle (rad) | **Rate** (deg/s) |
 | Thrust | Newtons | PWM (0–65535) |
-| Max tilt | 0.5 rad (~28.6°) | 15° (keyboard_control default) |
+| Max tilt | 0.5 rad (~28.6°) | 15° (hw-teleop default) |
 | State source | Perfect physics (zero noise/latency) | OptiTrack via MQTT (noisy velocity from finite diff, network latency) |
 | Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | Not yet implemented (needs `optitrack_to_mpc_state()`) |
 | Roll/pitch axes | Swapped — see note below | Standard: +pitch = forward, -roll = left |

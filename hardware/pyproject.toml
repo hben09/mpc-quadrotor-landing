@@ -13,14 +13,13 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["keyboard_control", "thrust_test", "mqtt_viewer", "mpc_control", "hover_test"]
+py-modules = ["teleop", "thrust_test", "mqtt_viewer", "mpc_teleop"]
 
 [project.scripts]
-keyboard-control = "keyboard_control:main"
+hw-teleop = "teleop:main"
 thrust-test = "thrust_test:main"
 mqtt-viewer = "mqtt_viewer:main"
-mpc-control = "mpc_control:main"
-hover-test = "hover_test:main"
+mpc-teleop = "mpc_teleop:main"
 
 [tool.uv.sources]
 mpc-landing = { workspace = true }

@@ -1,11 +1,11 @@
 """
-Minimal MPC hover test — hold position above the origin.
+MPC teleop — fly via a manually-piloted setpoint.
 
 Publishes target to mpc/target so mqtt_viewer shows it.
 Press SPACE to take off, Esc to stop.
 
 Usage:
-    uv run hover-test
+    uv run mpc-teleop
 """
 
 import csv
@@ -189,7 +189,7 @@ class DroneStateReader:
         self._count = 0
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id="hover-test-reader",
+            client_id="mpc-teleop-reader",
             protocol=mqtt.MQTTv311,
         )
         self._client.on_connect = lambda c, u, f, rc, p: c.subscribe(DRONE_TOPIC)
@@ -279,7 +279,7 @@ def main():
 
         pub = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id="hover-test-pub",
+            client_id="mpc-teleop-pub",
             protocol=mqtt.MQTTv311,
         )
         pub.connect(MQTT_BROKER, MQTT_PORT)
@@ -329,7 +329,7 @@ def main():
         listener.start()
 
         print()
-        print(f"=== Hover Test — target {TARGET} ===")
+        print(f"=== MPC Teleop — target {TARGET} ===")
         print("Press SPACE to take off, Esc to abort")
         print("WASD = move XZ, Q/E = altitude (hold for smooth movement)")
         print("MPC tuning: 1-6 select, Up/Down adjust")
@@ -363,10 +363,10 @@ def main():
                         break
                     time.sleep(CONTROL_DT)
 
-                # MPC hover loop
+                # MPC control loop
                 log_dir = Path(__file__).resolve().parent / "logs"
                 log_dir.mkdir(exist_ok=True)
-                log_path = log_dir / f"hover_{datetime.now():%Y%m%d_%H%M%S}.csv"
+                log_path = log_dir / f"teleop_{datetime.now():%Y%m%d_%H%M%S}.csv"
                 log_file = open(log_path, "w", newline="")
                 log_writer = csv.writer(log_file)
                 log_writer.writerow([
@@ -377,7 +377,7 @@ def main():
                     "Qp", "Qv", "Qf", "R", "a_max", "v_max",
                 ])
                 t0_mpc = time.monotonic()
-                print(f"MPC hover active — Esc to land  (log: {log_path.name})")
+                print(f"MPC teleop active — Esc to land  (log: {log_path.name})")
                 step = 0
                 while not stop.is_set():
                     loop_start = time.monotonic()
