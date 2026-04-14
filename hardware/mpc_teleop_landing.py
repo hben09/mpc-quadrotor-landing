@@ -343,6 +343,7 @@ def main():
             return
 
         with SafeCommander(cf.commander) as commander:
+            log_file = None
             try:
                 # Takeoff ramp
                 print("Takeoff ramp...")
@@ -355,7 +356,7 @@ def main():
                         break
                     frac = elapsed / RAMP_DURATION
                     commander.send_setpoint(0.0, 0.0, 0.0, int(HOVER_PWM * frac))
-                    drone = reader.get()
+                    drone = reader.get_drone()
                     if drone and drone.pos[1] > AIRBORNE_ALT:
                         break
                     time.sleep(CONTROL_DT)
@@ -464,7 +465,8 @@ def main():
             finally:
                 commander.send_stop_setpoint()
                 commander.send_notify_setpoint_stop()
-                log_file.close()
+                if log_file is not None:
+                    log_file.close()
                 time.sleep(0.1)
                 pub.loop_stop()
                 pub.disconnect()
