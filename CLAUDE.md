@@ -23,6 +23,7 @@ sim/                    # Crazyflow simulation environment (workspace member)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
+  mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
   mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
   thrust_test.py        # Thrust calibration utility for Crazyflie
 
@@ -33,7 +34,8 @@ archive/                # Legacy code kept for reference
 ### Entry Points
 
 All scripts are runnable via `uv run <command>`:
-- `hw-teleop` — manual flight with physical Crazyflie
+- `hw-teleop` — manual attitude flight with physical Crazyflie
+- `mpc-teleop` — MPC position flight with manually-piloted setpoint (physical Crazyflie)
 - `mqtt-viewer` — real-time 3D drone position viewer (OptiTrack via MQTT)
 - `thrust-test` — motor thrust calibration
 - `sim-mpc` — MPC simulation with virtual target
@@ -66,8 +68,9 @@ Currently used in `hardware/teleop.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
-- Hardware control currently via `hardware/teleop.py` (manual attitude teleoperation)
-- Next step: integrate MPC with cflib for autonomous hardware flight
+- Hardware MPC flight implemented in `hardware/mpc_teleop.py` (MPC position control with manually-piloted setpoint, yaw-compensated accel→attitude mapping)
+- Manual attitude teleoperation still available via `hardware/teleop.py`
+- Next step: autonomous landing on the Limo ground vehicle (tracking + descent phases)
 - MPC state: [px, vx, py, vy, pz, vz], control: [ax, ay, az], horizon: 25 steps (0.5s)
 
 ## Dependencies
@@ -118,7 +121,7 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
 | Thrust | Newtons | PWM (0–65535) |
 | Max tilt | 0.5 rad (~28.6°) | 15° (hw-teleop default) |
 | State source | Perfect physics (zero noise/latency) | OptiTrack via MQTT (noisy velocity from finite diff, network latency) |
-| Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | Not yet implemented (needs `optitrack_to_mpc_state()`) |
+| Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | `optitrack_to_mpc_state()` in `hardware/mpc_teleop.py` |
 | Roll/pitch axes | Swapped — see note below | Standard: +pitch = forward, -roll = left |
 
 **Crazyflow roll/pitch visual rotation:** The Crazyflie 3D model in Crazyflow is visually rotated 90° from cflib's convention. The attitude controller itself uses **standard convention** (roll=lateral, pitch=forward in world frame).
