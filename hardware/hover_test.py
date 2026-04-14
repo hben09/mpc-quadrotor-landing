@@ -71,9 +71,14 @@ def optitrack_to_mpc_state(rb):
     ])
 
 
-def mpc_accel_to_cflib_setpoint(ax, ay, az):
-    pitch_deg = float(np.clip(np.degrees(ax / G), -MAX_TILT_DEG, MAX_TILT_DEG))
-    roll_deg = float(np.clip(np.degrees(az / G), -MAX_TILT_DEG, MAX_TILT_DEG))
+def mpc_accel_to_cflib_setpoint(ax, ay, az, yaw):
+    # Rotate world-frame (ax, az) into body frame using drone yaw (OptiTrack
+    # euler[1], + = CCW from above). cflib interprets pitch/roll in body frame.
+    c, s = np.cos(yaw), np.sin(yaw)
+    a_fwd = c * ax - s * az
+    a_right = s * ax + c * az
+    pitch_deg = float(np.clip(np.degrees(a_fwd / G), -MAX_TILT_DEG, MAX_TILT_DEG))
+    roll_deg = float(np.clip(np.degrees(a_right / G), -MAX_TILT_DEG, MAX_TILT_DEG))
     thrust_pwm = int(np.clip(HOVER_PWM * (ay / G), 0, 60000))
     return roll_deg, pitch_deg, 0.0, thrust_pwm
 
@@ -368,7 +373,7 @@ def main():
                     "t", "px", "py", "pz", "vx", "vy", "vz",
                     "tx", "ty", "tz", "ax", "ay", "az",
                     "roll", "pitch", "thrust",
-                    "d_hat",
+                    "d_hat", "yaw",
                     "Qp", "Qv", "Qf", "R", "a_max", "v_max",
                 ])
                 t0_mpc = time.monotonic()
@@ -394,7 +399,8 @@ def main():
                     u_opt = mpc.compute(x0, ref)
                     ax, ay, az = u_opt
 
-                    roll, pitch, yawrate, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az)
+                    yaw = drone.euler[1]
+                    roll, pitch, yawrate, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az, yaw)
                     commander.send_setpoint(roll, pitch, yawrate, thrust)
 
                     # Log every step to CSV
@@ -407,7 +413,7 @@ def main():
                         f"{TARGET[0]:.4f}", f"{TARGET[1]:.4f}", f"{TARGET[2]:.4f}",
                         f"{ax:.4f}", f"{ay:.4f}", f"{az:.4f}",
                         f"{roll:.2f}", f"{pitch:.2f}", f"{thrust}",
-                        f"{mpc.disturbance:.4f}",
+                        f"{mpc.disturbance:.4f}", f"{yaw:.4f}",
                         f"{config.Q_diag[0]:.2f}", f"{config.Q_diag[1]:.2f}",
                         f"{config.Qf_diag[0]:.2f}", f"{config.R_diag[0]:.2f}",
                         f"{config.a_max:.2f}", f"{config.v_max:.2f}",
@@ -421,6 +427,7 @@ def main():
                             f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
                             f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
                             f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
+                            f"yaw:{np.degrees(yaw):+5.1f}° "
                             f"| {tuner.status_line()}  \033[K"
                         )
                         sys.stdout.flush()
