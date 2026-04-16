@@ -13,9 +13,10 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["dashboard", "mpc_teleop_landing", "csv_logger"]
+py-modules = ["teleop", "dashboard", "mpc_teleop_landing", "csv_logger"]
 
 [project.scripts]
+hw-teleop = "teleop:main"
 dashboard = "dashboard:main"
 mpc-teleop = "mpc_teleop_landing:main"
 
