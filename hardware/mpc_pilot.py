@@ -18,7 +18,7 @@ current reference (no snap back to the previous manual target).
 Press SPACE to take off, T/L to toggle tracking/landing, Esc to stop.
 
 Usage:
-    uv run python hardware/mpc_teleop_landing.py
+    uv run python hardware/mpc_pilot.py
 """
 
 import json
@@ -234,7 +234,7 @@ class TrackingStateReader:
         self._target_count = 0
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id="mpc-teleop-reader",
+            client_id="mpc-pilot-reader",
             protocol=mqtt.MQTTv311,
         )
         self._client.on_connect = self._on_connect
@@ -348,7 +348,7 @@ def main():
 
         pub = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id="mpc-teleop-pub",
+            client_id="mpc-pilot-pub",
             protocol=mqtt.MQTTv311,
         )
         pub.connect(MQTT_BROKER, MQTT_PORT)

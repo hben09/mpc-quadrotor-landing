@@ -48,7 +48,7 @@ class TeleopLogger:
     """Append-only CSV logger matching the shared MPC teleop schema.
 
     Pass ``include_mode=True`` to append a trailing ``mode`` column
-    (used by mpc_teleop_landing.py to record "T"/"M").
+    (used by mpc_pilot.py to record "T"/"M").
     """
 
     def __init__(self, log_dir: Path, *, include_mode: bool = False):
