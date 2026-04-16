@@ -14,12 +14,10 @@ Usage:
     uv run python hardware/mpc_teleop_landing.py
 """
 
-import csv
 import json
 import sys
 import time
 import threading
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +35,8 @@ from mpc_landing.mqtt.parser import RigidBodyTracker
 from mpc_landing.reference import static_reference, tracking_reference
 from mpc_landing.supervisor import SafeCommander
 from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
+
+from csv_logger import TeleopLogger
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -417,7 +417,6 @@ def main():
             return
 
         with SafeCommander(cf.commander) as commander:
-            log_file = None
             try:
                 # Takeoff ramp
                 print("Takeoff ramp...")
@@ -437,164 +436,113 @@ def main():
 
                 # MPC control loop
                 log_dir = Path(__file__).resolve().parent / "logs"
-                log_dir.mkdir(exist_ok=True)
-                log_path = log_dir / f"teleop_{datetime.now():%Y%m%d_%H%M%S}.csv"
-                log_file = open(log_path, "w", newline="")
-                log_writer = csv.writer(log_file)
-                log_writer.writerow(
-                    [
-                        "t",
-                        "px",
-                        "py",
-                        "pz",
-                        "vx",
-                        "vy",
-                        "vz",
-                        "tx",
-                        "ty",
-                        "tz",
-                        "ax",
-                        "ay",
-                        "az",
-                        "roll",
-                        "pitch",
-                        "thrust",
-                        "d_hat",
-                        "yaw",
-                        "target_yaw",
-                        "yawrate",
-                        "Qp",
-                        "Qv",
-                        "Qf",
-                        "R",
-                        "a_max",
-                        "v_max",
-                        "mode",
-                    ]
-                )
-                t0_mpc = time.monotonic()
-                print(f"MPC teleop active — Esc to land  (log: {log_path.name})")
-                step = 0
-                while not stop.is_set():
-                    loop_start = time.monotonic()
+                with TeleopLogger(log_dir, include_mode=True) as log:
+                    t0_mpc = time.monotonic()
+                    print(f"MPC teleop active — Esc to land  (log: {log.path.name})")
+                    step = 0
+                    while not stop.is_set():
+                        loop_start = time.monotonic()
 
-                    if commander.boundary_violated:
-                        print("\n*** BOUNDARY VIOLATED ***")
-                        break
+                        if commander.boundary_violated:
+                            print("\n*** BOUNDARY VIOLATED ***")
+                            break
 
-                    drone = reader.get_drone()
-                    if drone is None:
-                        commander.send_setpoint(0.0, 0.0, 0.0, HOVER_PWM)
-                        time.sleep(CONTROL_DT)
-                        continue
+                        drone = reader.get_drone()
+                        if drone is None:
+                            commander.send_setpoint(0.0, 0.0, 0.0, HOVER_PWM)
+                            time.sleep(CONTROL_DT)
+                            continue
 
-                    mpc = tuner.maybe_rebuild(mpc)
-                    x0 = optitrack_to_mpc_state(drone)
+                        mpc = tuner.maybe_rebuild(mpc)
+                        x0 = optitrack_to_mpc_state(drone)
 
-                    target_rb = reader.get_target()
-                    if tracking_enabled.is_set() and target_rb is not None:
-                        ref = tracking_reference(
-                            rigid_body_to_state(drone),
-                            rigid_body_to_state(target_rb),
-                            N,
-                            CONTROL_DT,
-                        )
-                        active_target = [
-                            float(ref[0, 0]),
-                            float(ref[0, 2]),
-                            float(ref[0, 4]),
-                        ]
-                        TARGET_YAW = target_rb.yaw
-                        mode = "T"
-                    else:
-                        if tracking_enabled.is_set() and target_rb is None:
-                            tracking_enabled.clear()
-                            print(
-                                f"\n>>> Tracking OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
+                        target_rb = reader.get_target()
+                        if tracking_enabled.is_set() and target_rb is not None:
+                            ref = tracking_reference(
+                                rigid_body_to_state(drone),
+                                rigid_body_to_state(target_rb),
+                                N,
+                                CONTROL_DT,
                             )
-                        update_target(CONTROL_DT)
-                        ref = static_reference(TARGET, N, CONTROL_DT)
-                        active_target = list(TARGET)
-                        mode = "M"
-
-                    u_opt = mpc.compute(x0, ref)
-                    ax, ay, az = u_opt
-
-                    yaw = drone.yaw
-                    roll, pitch, thrust = mpc_accel_to_cflib_setpoint(ax, ay, az, yaw)
-                    yawrate = compute_yawrate(yaw, TARGET_YAW)
-                    commander.send_setpoint(roll, pitch, yawrate, thrust)
-
-                    # Log every step to CSV
-                    pos = drone.pos
-                    vel = drone.vel
-                    log_writer.writerow(
-                        [
-                            f"{time.monotonic() - t0_mpc:.3f}",
-                            f"{pos[0]:.4f}",
-                            f"{pos[1]:.4f}",
-                            f"{pos[2]:.4f}",
-                            f"{vel[0]:.4f}",
-                            f"{vel[1]:.4f}",
-                            f"{vel[2]:.4f}",
-                            f"{active_target[0]:.4f}",
-                            f"{active_target[1]:.4f}",
-                            f"{active_target[2]:.4f}",
-                            f"{ax:.4f}",
-                            f"{ay:.4f}",
-                            f"{az:.4f}",
-                            f"{roll:.2f}",
-                            f"{pitch:.2f}",
-                            f"{thrust}",
-                            f"{mpc.disturbance:.4f}",
-                            f"{yaw:.4f}",
-                            f"{TARGET_YAW:.4f}",
-                            f"{yawrate:.2f}",
-                            f"{config.Q_diag[0]:.2f}",
-                            f"{config.Q_diag[1]:.2f}",
-                            f"{config.Qf_diag[0]:.2f}",
-                            f"{config.R_diag[0]:.2f}",
-                            f"{config.a_max:.2f}",
-                            f"{config.v_max:.2f}",
-                            mode,
-                        ]
-                    )
-
-                    step += 1
-                    if step % 5 == 0:
-                        err = [active_target[i] - pos[i] for i in range(3)]
-                        sys.stdout.write(
-                            f"\r[{mode}] pos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
-                            f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
-                            f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
-                            f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
-                            f"yaw:{np.degrees(yaw):+5.1f}°→{np.degrees(TARGET_YAW):+5.1f}° "
-                            f"yr:{yawrate:+5.1f}°/s "
-                            f"| {tuner.status_line()}  \033[K"
-                        )
-                        sys.stdout.flush()
-
-                        pub.publish(
-                            MPC_TARGET_TOPIC,
-                            json.dumps({"pos": active_target, "yaw": TARGET_YAW}),
-                        )
-                        planned = mpc.get_planned_trajectory()
-                        if planned is not None:
-                            pts = [
-                                [float(r[0]), float(r[2]), float(r[4])] for r in planned
+                            active_target = [
+                                float(ref[0, 0]),
+                                float(ref[0, 2]),
+                                float(ref[0, 4]),
                             ]
-                            pub.publish(MPC_TRAJ_TOPIC, json.dumps({"points": pts}))
+                            TARGET_YAW = target_rb.yaw
+                            mode = "T"
+                        else:
+                            if tracking_enabled.is_set() and target_rb is None:
+                                tracking_enabled.clear()
+                                print(
+                                    f"\n>>> Tracking OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
+                                )
+                            update_target(CONTROL_DT)
+                            ref = static_reference(TARGET, N, CONTROL_DT)
+                            active_target = list(TARGET)
+                            mode = "M"
 
-                    elapsed = time.monotonic() - loop_start
-                    sleep_time = CONTROL_DT - elapsed
-                    if sleep_time > 0:
-                        time.sleep(sleep_time)
+                        u_opt = mpc.compute(x0, ref)
+                        ax, ay, az = u_opt
+
+                        yaw = drone.yaw
+                        roll, pitch, thrust = mpc_accel_to_cflib_setpoint(
+                            ax, ay, az, yaw
+                        )
+                        yawrate = compute_yawrate(yaw, TARGET_YAW)
+                        commander.send_setpoint(roll, pitch, yawrate, thrust)
+
+                        pos = drone.pos
+                        vel = drone.vel
+                        log.log(
+                            t=time.monotonic() - t0_mpc,
+                            pos=pos,
+                            vel=vel,
+                            target=active_target,
+                            accel=u_opt,
+                            setpoint=(roll, pitch, thrust),
+                            disturbance=mpc.disturbance,
+                            yaw=yaw,
+                            target_yaw=TARGET_YAW,
+                            yawrate=yawrate,
+                            config=config,
+                            mode=mode,
+                        )
+
+                        step += 1
+                        if step % 5 == 0:
+                            err = [active_target[i] - pos[i] for i in range(3)]
+                            sys.stdout.write(
+                                f"\r[{mode}] pos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
+                                f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
+                                f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
+                                f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
+                                f"yaw:{np.degrees(yaw):+5.1f}°→{np.degrees(TARGET_YAW):+5.1f}° "
+                                f"yr:{yawrate:+5.1f}°/s "
+                                f"| {tuner.status_line()}  \033[K"
+                            )
+                            sys.stdout.flush()
+
+                            pub.publish(
+                                MPC_TARGET_TOPIC,
+                                json.dumps({"pos": active_target, "yaw": TARGET_YAW}),
+                            )
+                            planned = mpc.get_planned_trajectory()
+                            if planned is not None:
+                                pts = [
+                                    [float(r[0]), float(r[2]), float(r[4])]
+                                    for r in planned
+                                ]
+                                pub.publish(MPC_TRAJ_TOPIC, json.dumps({"points": pts}))
+
+                        elapsed = time.monotonic() - loop_start
+                        sleep_time = CONTROL_DT - elapsed
+                        if sleep_time > 0:
+                            time.sleep(sleep_time)
 
             finally:
                 commander.send_stop_setpoint()
                 commander.send_notify_setpoint_stop()
-                if log_file is not None:
-                    log_file.close()
                 time.sleep(0.1)
                 pub.loop_stop()
                 pub.disconnect()
