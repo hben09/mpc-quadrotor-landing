@@ -17,6 +17,7 @@ import threading
 import numpy as np
 import paho.mqtt.client as mqtt
 import pyvista as pv
+import vtk
 from scipy.spatial.transform import Rotation
 
 from mpc_landing.boundary import ARENA_BOUNDS
@@ -250,7 +251,15 @@ def main():
 
     # Camera and axes
     plotter.camera_position = "xz"
-    plotter.add_axes()
+    # Rotate the widget 90° about X so red/green/blue arrows align with
+    # MQTT X/Y/Z (fwd/up/right) instead of PyVista's remapped frame.
+    axes_actor = plotter.add_axes(
+        xlabel="X", ylabel="Y", zlabel="Z",
+        x_color="red", y_color="green", z_color="blue",
+    )
+    _axes_transform = vtk.vtkTransform()
+    _axes_transform.RotateX(90)
+    axes_actor.SetUserTransform(_axes_transform)
 
     # --- Timer callback (20 Hz) ---
     def update_callback(_step=None):
