@@ -474,8 +474,10 @@ def main():
 
                 # MPC control loop
                 log_dir = Path(__file__).resolve().parent / "logs"
-                with TeleopLogger(log_dir, include_mode=True) as log, \
-                        InfeasibilityLogger(log_dir, log.path) as infeas:
+                with (
+                    TeleopLogger(log_dir, include_mode=True) as log,
+                    InfeasibilityLogger(log_dir, log.path) as infeas,
+                ):
                     t0_mpc = time.monotonic()
                     print(f"MPC teleop active — Esc to land  (log: {log.path.name})")
                     step = 0
