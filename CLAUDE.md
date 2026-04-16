@@ -25,7 +25,6 @@ sim/                    # Crazyflow simulation environment (workspace member)
   teleop.py             # Keyboard teleoperation (attitude control, pynput)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
-  teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput) — keep barebones
   mpc_teleop_landing.py # MPC position flight (manual WASD/QE + runtime tuning + CSV logging) with autonomous tracking (T, 1 m hold) and descent (L, auto-cutoff) onto rb/landing
   battery.py            # BatteryPublisher — cflib pm.* LogConfig → MQTT topic cf/battery
   dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
@@ -34,7 +33,6 @@ hardware/               # Crazyflie hardware control scripts (workspace member)
 ### Entry Points
 
 All scripts are runnable via `uv run <command>`:
-- `hw-teleop` — manual attitude flight with physical Crazyflie
 - `mpc-teleop` — MPC position flight (physical Crazyflie); manual WASD/QE by default, with **T** to toggle tracking and **L** to toggle autonomous descent on `rb/landing`
 - `dashboard` — real-time 3D drone position viewer (OptiTrack via MQTT)
 - `sim-mpc` — MPC simulation with virtual target
@@ -67,13 +65,12 @@ Usage (context manager):
 with SafeCommander(cf.commander) as commander:
     commander.send_setpoint(roll, pitch, yawrate, thrust)
 ```
-Currently used in `hardware/teleop.py`.
+Currently used in `hardware/mpc_teleop_landing.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
 - Hardware MPC position flight via `hardware/mpc_teleop_landing.py` (manually-piloted setpoint by default, yaw-compensated accel→attitude mapping), with autonomous tracking + landing on `rb/landing` via the same script (and `sim/simu_mpc_teleop_landing.py` in sim), using `tracking_reference()` (1 m altitude hold) + `landing_reference()` (0.3 m/s descent) from `mpc_landing/reference.py`. **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.10 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
 - Yaw P-controller in `mpc_landing/yaw_controller.py` runs alongside position MPC (decoupled world-frame axis)
-- Manual attitude teleoperation still available via `hardware/teleop.py`
 - MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
 
 ## Dependencies
@@ -95,7 +92,6 @@ Currently used in `hardware/teleop.py`.
 
 - Control loop: 50Hz (20ms period)
 - Crazyflie control interface: `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` — attitude commands via cflib
-- **`hardware/teleop.py` stays barebones** — manual attitude flight only. Do NOT wire MPC, MQTT publishing, battery logging, or other telemetry into it. It exists as the minimal "just fly the drone" fallback. Put such features in `mpc_teleop_landing.py` instead.
 
 ## Coordinate Systems
 
@@ -125,7 +121,7 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
 | Attitude units | Radians | Degrees |
 | Yaw | Absolute angle (rad) | **Rate** (deg/s) |
 | Thrust | Newtons | PWM (0–65535) |
-| Max tilt | 0.5 rad (~28.6°) | 15° (hw-teleop default) |
+| Max tilt | 0.5 rad (~28.6°) | 15° (cflib default) |
 | State source | Perfect physics (zero noise/latency) | OptiTrack via MQTT (noisy velocity from finite diff, network latency) |
 | Coordinate mapping | `cf_to_mpc_state()` in `sim/mpc_controller.py` | `optitrack_to_mpc_state()` in `hardware/mpc_teleop_landing.py` |
 | Roll/pitch axes | Swapped — see note below | Standard: +pitch = forward, -roll = left |
