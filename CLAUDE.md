@@ -25,9 +25,10 @@ sim/                    # Crazyflow simulation environment (workspace member)
   teleop.py             # Keyboard teleoperation (attitude control, pynput)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
-  teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
+  teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput) — keep barebones
   mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
   mpc_teleop_landing.py # MPC tracking + autonomous descent on rb/landing (physical Crazyflie)
+  battery.py            # BatteryPublisher — cflib pm.* LogConfig → MQTT topic cf/battery
   dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
 ```
 
@@ -97,6 +98,7 @@ Currently used in `hardware/teleop.py`.
 
 - Control loop: 50Hz (20ms period)
 - Crazyflie control interface: `cf.commander.send_setpoint(roll, pitch, yawrate, thrust)` — attitude commands via cflib
+- **`hardware/teleop.py` stays barebones** — manual attitude flight only. Do NOT wire MPC, MQTT publishing, battery logging, or other telemetry into it. It exists as the minimal "just fly the drone" fallback. Put such features in `mpc_teleop.py` / `mpc_teleop_landing.py` instead.
 
 ## Coordinate Systems
 
