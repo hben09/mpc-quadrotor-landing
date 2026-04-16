@@ -8,7 +8,7 @@ MPC-based autonomous quadrotor landing system. A Crazyflie drone is controlled f
 
 ```
 mpc_landing/            # Core control library (workspace member, importable package)
-  mpc.py                # Linear MPC controller (CVXPY/OSQP, 3D double integrator)
+  mpc.py                # Offset-free MPC controller (CVXPY/OSQP, 3D double integrator + vertical disturbance state)
   reference.py          # Reference trajectory generation (tracking, landing, static)
   boundary.py           # RASTIC arena boundary safety checker
   supervisor.py         # SafeCommander — boundary safety supervisor wrapping cf.commander
@@ -45,6 +45,10 @@ All scripts are runnable via `uv run <command>`:
 - `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere)
 - `sim-teleop` — manual flight in Crazyflow simulator
 
+The autonomous landing scripts have no console-script alias yet — invoke them directly:
+- `uv run python hardware/mpc_teleop_landing.py` — MPC tracking + autonomous descent on `rb/landing` (physical Crazyflie)
+- `uv run python sim/simu_mpc_teleop_landing.py` — same flow, in Crazyflow sim
+
 ## Architecture
 
 ### Control Pipeline
@@ -75,7 +79,7 @@ Currently used in `hardware/teleop.py`.
 - Autonomous tracking + landing on `rb/landing` via `hardware/mpc_teleop_landing.py` (hardware) and `sim/simu_mpc_teleop_landing.py` (sim), using `tracking_reference()` + `landing_reference()` from `mpc_landing/reference.py`
 - Yaw P-controller in `mpc_landing/yaw.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
-- MPC state: [px, vx, py, vy, pz, vz], control: [ax, ay, az], horizon: 25 steps (0.5s)
+- MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
 
 ## Dependencies
 
