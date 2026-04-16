@@ -12,20 +12,23 @@ mpc_landing/            # Core control library (workspace member, importable pac
   reference.py          # Reference trajectory generation (tracking, landing, static)
   boundary.py           # RASTIC arena boundary safety checker
   supervisor.py         # SafeCommander — boundary safety supervisor wrapping cf.commander
+  yaw.py                # P yaw controller (OptiTrack CCW+ → cflib CW+ sign flip, deg/s output)
   mqtt/                 # MQTT rigid-body pose streaming from OptiTrack
     parser.py           # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
-    sub.py              # MQTT subscriber for drone (crazyflie) and ground vehicle (limo777) poses
+    sub.py              # MQTT subscriber for drone (crazyflie) and landing target (rb/landing) poses
 
 sim/                    # Crazyflow simulation environment (workspace member)
   mpc_controller.py     # Closed-loop MPC simulation (hover + tracking + landing)
   mpc_controller_ground.py  # MPC with physics-based ground vehicle
+  mpc_gui.py            # PyVista GUI — drag target sphere, shows MPC plan + arena bounds
+  simu_mpc_teleop_landing.py  # Sim MPC tracking + autonomous descent on rb/landing
   teleop.py             # Keyboard teleoperation (attitude control, pynput)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
   mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
+  mpc_teleop_landing.py # MPC tracking + autonomous descent on rb/landing (physical Crazyflie)
   mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
-  thrust_test.py        # Thrust calibration utility for Crazyflie
 
 archive/                # Legacy code kept for reference
   coppeliasim/          # Previous CoppeliaSim-based simulation (replaced by Crazyflow)
@@ -37,16 +40,16 @@ All scripts are runnable via `uv run <command>`:
 - `hw-teleop` — manual attitude flight with physical Crazyflie
 - `mpc-teleop` — MPC position flight with manually-piloted setpoint (physical Crazyflie)
 - `mqtt-viewer` — real-time 3D drone position viewer (OptiTrack via MQTT)
-- `thrust-test` — motor thrust calibration
 - `sim-mpc` — MPC simulation with virtual target
 - `sim-mpc-ground` — MPC simulation with physics-based ground vehicle
+- `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere)
 - `sim-teleop` — manual flight in Crazyflow simulator
 
 ## Architecture
 
 ### Control Pipeline
 1. **Drone pose** → OptiTrack → Motive → MQTT broker (`rasticvm.internal:1883`) → topic `rb/crazyflie` → `mpc_landing/mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
-2. **Ground vehicle pose** → OptiTrack → Motive → MQTT broker → topic `rb/limo777` → `mpc_landing/mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
+2. **Landing target pose** → OptiTrack → Motive → MQTT broker → topic `rb/landing` → `mpc_landing/mqtt/parser.py` → `MQTTRigidBody` (pos, euler, vel)
 3. **MPC controller** computes desired acceleration commands
 4. **cflib** → Crazyradio 2.0 → Crazyflie
 
@@ -68,9 +71,10 @@ Currently used in `hardware/teleop.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
-- Hardware MPC flight implemented in `hardware/mpc_teleop.py` (MPC position control with manually-piloted setpoint, yaw-compensated accel→attitude mapping)
+- Hardware MPC position flight via `hardware/mpc_teleop.py` (manually-piloted setpoint, yaw-compensated accel→attitude mapping)
+- Autonomous tracking + landing on `rb/landing` via `hardware/mpc_teleop_landing.py` (hardware) and `sim/simu_mpc_teleop_landing.py` (sim), using `tracking_reference()` + `landing_reference()` from `mpc_landing/reference.py`
+- Yaw P-controller in `mpc_landing/yaw.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
-- Next step: autonomous landing on the Limo ground vehicle (tracking + descent phases)
 - MPC state: [px, vx, py, vy, pz, vz], control: [ax, ay, az], horizon: 25 steps (0.5s)
 
 ## Dependencies
@@ -136,4 +140,4 @@ MPC (`mpc_landing/mpc.py`) outputs accelerations `[ax, ay, az]`. The translation
   See `sim/teleop.py` lines 152-153.
 - **MPC** (world-frame control): Uses standard physics (roll=lateral, pitch=forward) and is **not affected** by the visual rotation. `mpc_accel_to_attitude()` in `sim/mpc_controller.py` is correct as-is — no swap needed.
 
-Newton-to-PWM thrust calibration is not yet established; use `hardware/thrust_test.py` to build one.
+Newton-to-PWM thrust calibration is not yet established.

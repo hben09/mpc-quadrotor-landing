@@ -13,11 +13,10 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["teleop", "thrust_test", "mqtt_viewer", "mpc_teleop"]
+py-modules = ["teleop", "mqtt_viewer", "mpc_teleop"]
 
 [project.scripts]
 hw-teleop = "teleop:main"
-thrust-test = "thrust_test:main"
 mqtt-viewer = "mqtt_viewer:main"
 mpc-teleop = "mpc_teleop:main"
 
