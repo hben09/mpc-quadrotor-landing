@@ -13,17 +13,17 @@ from cflib.utils import uri_helper
 
 from mpc_landing.supervisor import SafeCommander
 
-URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
+URI = uri_helper.uri_from_env(default="radio://0/80/2M/E7E7E7E7E7")
 
-MAX_ROLL = 15.0       # degrees
-MAX_PITCH = 15.0      # degrees
-MAX_YAWRATE = 60.0    # degrees/s
+MAX_ROLL = 15.0  # degrees
+MAX_PITCH = 15.0  # degrees
+MAX_YAWRATE = 60.0  # degrees/s
 MAX_THRUST = 45000
 
 # Discrete thrust modes
-MODE_DISARM = 'DISARM'
-MODE_ARM = 'ARM'
-MODE_HOVER = 'HOVER'
+MODE_DISARM = "DISARM"
+MODE_ARM = "ARM"
+MODE_HOVER = "HOVER"
 MODE_THRUST = {MODE_DISARM: 0, MODE_ARM: 15000, MODE_HOVER: 45000}
 THRUST_STEP = 5000
 
@@ -63,24 +63,24 @@ def compute_setpoint(mode):
     pitch = 0.0
     yawrate = 0.0
 
-    if 'w' in keys:
+    if "w" in keys:
         pitch = MAX_PITCH
-    if 's' in keys:
+    if "s" in keys:
         pitch = -MAX_PITCH
-    if 'a' in keys:
+    if "a" in keys:
         roll = -MAX_ROLL
-    if 'd' in keys:
+    if "d" in keys:
         roll = MAX_ROLL
-    if 'q' in keys:
+    if "q" in keys:
         yawrate = -MAX_YAWRATE
-    if 'e' in keys:
+    if "e" in keys:
         yawrate = MAX_YAWRATE
 
-    if '1' in keys:
+    if "1" in keys:
         mode = MODE_DISARM
-    elif '2' in keys:
+    elif "2" in keys:
         mode = MODE_ARM
-    elif '3' in keys:
+    elif "3" in keys:
         mode = MODE_HOVER
 
     thrust = MODE_THRUST[mode]
@@ -88,7 +88,11 @@ def compute_setpoint(mode):
     if mode == MODE_HOVER:
         if keyboard.Key.space in keys:
             thrust += THRUST_STEP
-        elif keyboard.Key.shift_l in keys or keyboard.Key.shift_r in keys or keyboard.Key.shift in keys:
+        elif (
+            keyboard.Key.shift_l in keys
+            or keyboard.Key.shift_r in keys
+            or keyboard.Key.shift in keys
+        ):
             thrust -= THRUST_STEP
 
     return roll, pitch, yawrate, thrust, mode
@@ -99,16 +103,18 @@ def main():
 
     cflib.crtp.init_drivers()
 
-    print('Scanning for Crazyflie...')
+    print("Scanning for Crazyflie...")
     available = cflib.crtp.scan_interfaces()
     if not available:
-        print('No Crazyflie found! Make sure it is powered on and the Crazyradio is plugged in.')
+        print(
+            "No Crazyflie found! Make sure it is powered on and the Crazyradio is plugged in."
+        )
         sys.exit(1)
 
-    print(f'Found: {available[0][0]}')
+    print(f"Found: {available[0][0]}")
     uri = available[0][0]
 
-    print('Connecting...')
+    print("Connecting...")
     cache_dir = str(Path(__file__).resolve().parent.parent / "cache")
     with SyncCrazyflie(uri, cf=Crazyflie(rw_cache=cache_dir)) as scf:
         cf = scf.cf
@@ -119,11 +125,11 @@ def main():
         cf.commander.send_setpoint(0, 0, 0, 0)
 
         print()
-        print('=== Keyboard Control Active ===')
-        print('W/S = pitch | A/D = roll | Q/E = yaw')
-        print('1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (45000)')
-        print('Space = thrust +5000 | Shift = thrust -5000')
-        print('Esc = emergency stop & quit')
+        print("=== Keyboard Control Active ===")
+        print("W/S = pitch | A/D = roll | Q/E = yaw")
+        print("1 = DISARM (0) | 2 = ARM (15000) | 3 = HOVER (45000)")
+        print("Space = thrust +5000 | Shift = thrust -5000")
+        print("Esc = emergency stop & quit")
         print()
 
         listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -134,19 +140,22 @@ def main():
             try:
                 while running:
                     if commander.boundary_violated:
-                        print('\n*** BOUNDARY VIOLATED — MOTORS STOPPED ***')
+                        print("\n*** BOUNDARY VIOLATED — MOTORS STOPPED ***")
                         break
 
                     roll, pitch, yawrate, thrust, mode = compute_setpoint(mode)
                     commander.send_setpoint(roll, pitch, yawrate, thrust)
 
                     pos = commander.position
-                    pos_str = (f"[{pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}]"
-                               if pos else "[no mocap]")
+                    pos_str = (
+                        f"[{pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}]"
+                        if pos
+                        else "[no mocap]"
+                    )
                     mqtt_str = "MQTT:OK" if commander.connected else "MQTT:--"
                     sys.stdout.write(
-                        f'\rMode: {mode:7s}  R:{roll:+6.1f} P:{pitch:+6.1f} '
-                        f'Y:{yawrate:+6.1f} T:{thrust:5d}  {mqtt_str} {pos_str}  '
+                        f"\rMode: {mode:7s}  R:{roll:+6.1f} P:{pitch:+6.1f} "
+                        f"Y:{yawrate:+6.1f} T:{thrust:5d}  {mqtt_str} {pos_str}  "
                     )
                     sys.stdout.flush()
                     time.sleep(0.02)  # 50 Hz
@@ -155,8 +164,8 @@ def main():
                 commander.send_notify_setpoint_stop()
                 time.sleep(0.1)
                 listener.stop()
-                print('\nDisconnected. Motors stopped.')
+                print("\nDisconnected. Motors stopped.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

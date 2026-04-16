@@ -27,8 +27,8 @@ def tracking_reference(drone_state, limo_state, N, dt):
     """
     ref = np.zeros((N + 1, 6))
 
-    limo_pos = np.array(limo_state['pos'])
-    limo_vel = np.array(limo_state['vel'])
+    limo_pos = np.array(limo_state["pos"])
+    limo_vel = np.array(limo_state["vel"])
 
     # Altitude to hold above the Limo
     tracking_altitude = limo_pos[1] + 0.5  # 0.5m above Limo
@@ -37,12 +37,12 @@ def tracking_reference(drone_state, limo_state, N, dt):
         t = k * dt
         pred_pos = limo_pos + limo_vel * t
 
-        ref[k, 0] = pred_pos[0]        # px — match Limo x
-        ref[k, 1] = limo_vel[0]        # vx — match Limo speed
+        ref[k, 0] = pred_pos[0]  # px — match Limo x
+        ref[k, 1] = limo_vel[0]  # vx — match Limo speed
         ref[k, 2] = tracking_altitude  # py — hold altitude above Limo
-        ref[k, 3] = 0.0               # vy — no vertical speed while tracking
-        ref[k, 4] = pred_pos[2]        # pz — match Limo z
-        ref[k, 5] = limo_vel[2]        # vz — match Limo speed
+        ref[k, 3] = 0.0  # vy — no vertical speed while tracking
+        ref[k, 4] = pred_pos[2]  # pz — match Limo z
+        ref[k, 5] = limo_vel[2]  # vz — match Limo speed
 
     return ref
 
@@ -65,9 +65,9 @@ def landing_reference(drone_state, limo_state, N, dt, descent_rate=0.3):
     """
     ref = np.zeros((N + 1, 6))
 
-    drone_pos = np.array(drone_state['pos'])
-    limo_pos = np.array(limo_state['pos'])
-    limo_vel = np.array(limo_state['vel'])
+    drone_pos = np.array(drone_state["pos"])
+    limo_pos = np.array(limo_state["pos"])
+    limo_vel = np.array(limo_state["vel"])
 
     # Landing target = Limo roof height (small offset for clearance)
     landing_height = limo_pos[1] + 0.05

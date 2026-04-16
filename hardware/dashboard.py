@@ -254,8 +254,12 @@ def main():
     # Rotate the widget 90° about X so red/green/blue arrows align with
     # MQTT X/Y/Z (fwd/up/right) instead of PyVista's remapped frame.
     axes_actor = plotter.add_axes(
-        xlabel="X", ylabel="Y", zlabel="Z",
-        x_color="red", y_color="green", z_color="blue",
+        xlabel="X",
+        ylabel="Y",
+        zlabel="Z",
+        x_color="red",
+        y_color="green",
+        z_color="blue",
     )
     _axes_transform = vtk.vtkTransform()
     _axes_transform.RotateX(90)

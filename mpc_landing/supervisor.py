@@ -16,7 +16,7 @@ BROKER = "rasticvm.internal"
 PORT = 1883
 TOPIC = "rb/crazyflie"
 STALE_TIMEOUT = 2.0  # seconds without position update before forced disarm
-AIRBORNE_ALT = 0.3   # metres (Y axis) — boundary checking starts after takeoff
+AIRBORNE_ALT = 0.3  # metres (Y axis) — boundary checking starts after takeoff
 
 
 class SafeCommander:
@@ -33,8 +33,14 @@ class SafeCommander:
             commander.send_setpoint(roll, pitch, yawrate, thrust)
     """
 
-    def __init__(self, commander, broker=BROKER, port=PORT, topic=TOPIC,
-                 stale_timeout=STALE_TIMEOUT):
+    def __init__(
+        self,
+        commander,
+        broker=BROKER,
+        port=PORT,
+        topic=TOPIC,
+        stale_timeout=STALE_TIMEOUT,
+    ):
         self._commander = commander
         self._broker = broker
         self._port = port
@@ -86,8 +92,10 @@ class SafeCommander:
                 self._commander.send_stop_setpoint()
                 return
             # Check stale data: only relevant once airborne
-            if (self._airborne
-                    and time.monotonic() - self._last_update > self._stale_timeout):
+            if (
+                self._airborne
+                and time.monotonic() - self._last_update > self._stale_timeout
+            ):
                 self._violated = True
                 self._commander.send_stop_setpoint()
                 print("\n*** POSITION DATA STALE — MOTORS STOPPED ***")

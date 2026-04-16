@@ -26,14 +26,16 @@ from dataclasses import dataclass, field
 class MPCConfig:
     """All tunable MPC parameters in one place."""
 
-    dt: float = 0.02            # timestep (s), 50Hz
-    horizon: int = 25           # prediction horizon (N steps = 0.5s at 50Hz)
+    dt: float = 0.02  # timestep (s), 50Hz
+    horizon: int = 25  # prediction horizon (N steps = 0.5s at 50Hz)
 
     # State cost weights: [px, vx, py, vy, pz, vz]
     Q_diag: list = field(default_factory=lambda: [10.0, 1.0, 10.0, 1.0, 10.0, 1.0])
 
     # Terminal cost weights (larger than Q to incentivize reaching target)
-    Qf_diag: list = field(default_factory=lambda: [200.0, 20.0, 100.0, 10.0, 100.0, 10.0])
+    Qf_diag: list = field(
+        default_factory=lambda: [200.0, 20.0, 100.0, 10.0, 100.0, 10.0]
+    )
 
     # Input cost weights: [ax, ay, az]
     R_diag: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
@@ -60,15 +62,15 @@ class MPCController:
         self.A = np.eye(nx)
         self.B = np.zeros((nx, nu))
         for i in range(3):
-            self.A[2*i, 2*i+1] = dt
-            self.B[2*i, i] = 0.5 * dt**2
-            self.B[2*i+1, i] = dt
+            self.A[2 * i, 2 * i + 1] = dt
+            self.B[2 * i, i] = 0.5 * dt**2
+            self.B[2 * i + 1, i] = dt
 
         # Disturbance state d (idx 6): constant bias on vertical acceleration
         # d[k+1] = d[k]  (already 1.0 on diagonal from np.eye)
         # d affects py and vy the same way as ay
         self.A[2, 6] = 0.5 * dt**2  # py += 0.5*d*dt^2
-        self.A[3, 6] = dt           # vy += d*dt
+        self.A[3, 6] = dt  # vy += d*dt
 
         # Gravity affine term: only affects py (idx 2) and vy (idx 3)
         self.g_vec = np.zeros(nx)
@@ -114,7 +116,8 @@ class MPCController:
 
             # Dynamics
             constraints.append(
-                self.x_var[k + 1] == self.A @ self.x_var[k] + self.B @ self.u_var[k] + self.g_vec
+                self.x_var[k + 1]
+                == self.A @ self.x_var[k] + self.B @ self.u_var[k] + self.g_vec
             )
 
             # Acceleration limits
@@ -124,8 +127,8 @@ class MPCController:
             # Velocity limits
             if self.cfg.v_max is not None:
                 for i in range(3):
-                    constraints.append(self.x_var[k + 1, 2*i+1] <= self.cfg.v_max)
-                    constraints.append(self.x_var[k + 1, 2*i+1] >= -self.cfg.v_max)
+                    constraints.append(self.x_var[k + 1, 2 * i + 1] <= self.cfg.v_max)
+                    constraints.append(self.x_var[k + 1, 2 * i + 1] >= -self.cfg.v_max)
 
         # Terminal cost
         err_f = self.x_var[N] - self.ref_param[N]
@@ -164,7 +167,7 @@ class MPCController:
         try:
             self.problem.solve(solver=cp.OSQP, warm_start=True)
 
-            if self.problem.status in ('optimal', 'optimal_inaccurate'):
+            if self.problem.status in ("optimal", "optimal_inaccurate"):
                 # Store predicted next state for disturbance estimation
                 self._x_pred = self.x_var.value[1, :6]
                 return self.u_var.value[0]
