@@ -8,7 +8,7 @@ ARENA_BOUNDS = {
     "x_min": -4.5,
     "x_max": 3.0,
     "y_min": 0.0,
-    "y_max": 2.0,
+    "y_max": 2.5,
     "z_min": -2.0,
     "z_max": 3.0,
 }
