@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["teleop", "dashboard", "mpc_pilot", "csv_logger"]
+py-modules = ["teleop", "dashboard", "mpc_pilot", "csv_logger", "battery"]
 
 [project.scripts]
 hw-teleop = "teleop:main"
