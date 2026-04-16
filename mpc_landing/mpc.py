@@ -17,6 +17,8 @@ this module.
 No ROS, no sim dependencies — just numpy and cvxpy.
 """
 
+import time
+
 import numpy as np
 import cvxpy as cp
 from dataclasses import dataclass, field
@@ -85,6 +87,7 @@ class MPCController:
         self._d_hat = 0.0
         self._x_pred = None
         self._last_status = ""
+        self._last_solve_time_ms = 0.0
 
         self.nx = nx
         self.nu = nu
@@ -166,7 +169,9 @@ class MPCController:
         self.ref_param.value = ref_aug
 
         try:
+            t_solve = time.perf_counter()
             self.problem.solve(solver=cp.OSQP, warm_start=True)
+            self._last_solve_time_ms = (time.perf_counter() - t_solve) * 1000.0
             self._last_status = self.problem.status
 
             if self.problem.status in ("optimal", "optimal_inaccurate"):
@@ -178,6 +183,7 @@ class MPCController:
                 self._x_pred = None
                 return np.zeros(3)
         except cp.SolverError as e:
+            self._last_solve_time_ms = (time.perf_counter() - t_solve) * 1000.0
             print(f"MPC solver error: {e}")
             self._last_status = "solver_error"
             self._x_pred = None
@@ -197,6 +203,10 @@ class MPCController:
     @property
     def last_status(self):
         return self._last_status
+
+    @property
+    def last_solve_time_ms(self):
+        return self._last_solve_time_ms
 
     def get_planned_inputs(self):
         """Return the full planned input sequence (useful for visualization)."""

@@ -1,8 +1,12 @@
-"""CSV logging helper for hardware MPC teleop scripts."""
+"""CSV logging helper for hardware MPC teleop scripts.
+
+Each flight's artifacts (teleop.csv, events.jsonl, infeasible.jsonl) live
+together in a per-flight directory chosen by the caller. The timestamp
+belongs to the directory name; filenames stay short.
+"""
 
 import csv
 import json
-from datetime import datetime
 from pathlib import Path
 
 _COLUMNS = [
@@ -33,6 +37,10 @@ _COLUMNS = [
     "a_max",
     "v_max",
     "mpc_status",
+    "solve_time_ms",
+    "loop_dt_ms",
+    "a_cmd_norm",
+    "vbat",
 ]
 
 
@@ -44,8 +52,8 @@ class TeleopLogger:
     """
 
     def __init__(self, log_dir: Path, *, include_mode: bool = False):
-        log_dir.mkdir(exist_ok=True)
-        self.path = log_dir / f"teleop_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.path = log_dir / "teleop.csv"
         self._include_mode = include_mode
         self._file = None
         self._writer = None
@@ -77,6 +85,10 @@ class TeleopLogger:
         config,
         mpc_status="",
         mode=None,
+        solve_time_ms=None,
+        loop_dt_ms=None,
+        a_cmd_norm=None,
+        vbat=None,
     ):
         roll, pitch, thrust = setpoint
         row = [
@@ -107,6 +119,10 @@ class TeleopLogger:
             f"{config.a_max:.2f}",
             f"{config.v_max:.2f}",
             f"{mpc_status}",
+            "" if solve_time_ms is None else f"{solve_time_ms:.3f}",
+            "" if loop_dt_ms is None else f"{loop_dt_ms:.3f}",
+            "" if a_cmd_norm is None else f"{a_cmd_norm:.4f}",
+            "" if vbat is None else f"{vbat:.3f}",
         ]
         if self._include_mode:
             row.append(mode if mode is not None else "")
@@ -114,9 +130,9 @@ class TeleopLogger:
 
 
 class InfeasibilityLogger:
-    def __init__(self, log_dir: Path, csv_path: Path):
-        log_dir.mkdir(exist_ok=True)
-        self.path = log_dir / (csv_path.stem + "_infeasible.jsonl")
+    def __init__(self, log_dir: Path):
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.path = log_dir / "infeasible.jsonl"
         self._file = None
 
     def __enter__(self):
@@ -144,5 +160,27 @@ class InfeasibilityLogger:
                 "v_max": config.v_max,
             },
         }
+        self._file.write(json.dumps(ev) + "\n")
+        self._file.flush()
+
+
+class EventLogger:
+    """JSONL log for discrete flight events (mode toggles, touchdown, etc.)."""
+
+    def __init__(self, log_dir: Path):
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.path = log_dir / "events.jsonl"
+        self._file = None
+
+    def __enter__(self):
+        self._file = open(self.path, "w")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._file is not None:
+            self._file.close()
+
+    def log(self, t, kind, **fields):
+        ev = {"t": float(t), "kind": str(kind), **fields}
         self._file.write(json.dumps(ev) + "\n")
         self._file.flush()

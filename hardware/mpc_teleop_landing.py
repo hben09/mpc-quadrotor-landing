@@ -25,6 +25,7 @@ import json
 import sys
 import time
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +49,7 @@ from mpc_landing.supervisor import SafeCommander
 from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
 
 from battery import BatteryPublisher
-from csv_logger import TeleopLogger, InfeasibilityLogger
+from csv_logger import TeleopLogger, InfeasibilityLogger, EventLogger
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -71,6 +72,7 @@ TRACKED_OBJECT_TOPIC = "rb/landing"
 TRACKED_OBJECT_NAME = "landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
+BATTERY_TOPIC = "cf/battery"
 
 TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
 
@@ -355,6 +357,21 @@ def main():
         battery = BatteryPublisher(cf, pub)
         battery.start()
 
+        # Subscribe to the same battery topic so the MPC loop can log vbat.
+        battery_state = {"vbat": None}
+        battery_lock = threading.Lock()
+
+        def _on_battery(_client, _userdata, msg):
+            try:
+                data = json.loads(msg.payload.decode())
+                with battery_lock:
+                    battery_state["vbat"] = float(data.get("vbat", 0.0))
+            except Exception:
+                pass
+
+        pub.message_callback_add(BATTERY_TOPIC, _on_battery)
+        pub.subscribe(BATTERY_TOPIC)
+
         # Wait for OptiTrack drone pose (landing pose is optional until T is pressed)
         print("Waiting for OptiTrack...", end="", flush=True)
         t0 = time.monotonic()
@@ -456,37 +473,73 @@ def main():
 
         with SafeCommander(cf.commander) as commander:
             try:
-                # Takeoff ramp
-                print("Takeoff ramp...")
-                ramp_start = time.monotonic()
-                while not stop.is_set():
-                    elapsed = time.monotonic() - ramp_start
-                    if elapsed >= RAMP_DURATION:
-                        break
-                    if commander.boundary_violated:
-                        break
-                    frac = elapsed / RAMP_DURATION
-                    commander.send_setpoint(0.0, 0.0, 0.0, int(HOVER_PWM * frac))
-                    drone = reader.get_drone()
-                    if drone and drone.pos[1] > AIRBORNE_ALT:
-                        break
-                    time.sleep(CONTROL_DT)
-
-                # MPC control loop
-                log_dir = Path(__file__).resolve().parent / "logs"
+                flight_dir = (
+                    Path(__file__).resolve().parent
+                    / "logs"
+                    / f"teleop_{datetime.now():%Y%m%d_%H%M%S}"
+                )
                 with (
-                    TeleopLogger(log_dir, include_mode=True) as log,
-                    InfeasibilityLogger(log_dir, log.path) as infeas,
+                    TeleopLogger(flight_dir, include_mode=True) as log,
+                    InfeasibilityLogger(flight_dir) as infeas,
+                    EventLogger(flight_dir) as events,
                 ):
-                    t0_mpc = time.monotonic()
-                    print(f"MPC teleop active — Esc to land  (log: {log.path.name})")
+                    # Takeoff ramp (shares time origin t0 with the MPC loop below)
+                    print("Takeoff ramp...")
+                    ramp_start = time.monotonic()
+                    t0 = ramp_start
+                    events.log(
+                        0.0,
+                        "takeoff_start",
+                        hover_pwm=HOVER_PWM,
+                        duration_s=RAMP_DURATION,
+                    )
+                    while not stop.is_set():
+                        elapsed = time.monotonic() - ramp_start
+                        if elapsed >= RAMP_DURATION:
+                            break
+                        if commander.boundary_violated:
+                            events.log(
+                                time.monotonic() - t0,
+                                "boundary_violated",
+                                phase="takeoff",
+                            )
+                            break
+                        frac = elapsed / RAMP_DURATION
+                        commander.send_setpoint(0.0, 0.0, 0.0, int(HOVER_PWM * frac))
+                        drone = reader.get_drone()
+                        if drone and drone.pos[1] > AIRBORNE_ALT:
+                            break
+                        time.sleep(CONTROL_DT)
+
+                    final_drone = reader.get_drone()
+                    events.log(
+                        time.monotonic() - t0,
+                        "takeoff_complete",
+                        y=float(final_drone.pos[1]) if final_drone else None,
+                    )
+
+                    # MPC control loop
+                    print(f"MPC teleop active — Esc to land  (log: {flight_dir.name}/)")
                     step = 0
                     prev_mode = "M"
+                    prev_loop_start = None
                     active_target = list(TARGET)
                     while not stop.is_set():
                         loop_start = time.monotonic()
+                        loop_dt_ms = (
+                            (loop_start - prev_loop_start) * 1000.0
+                            if prev_loop_start is not None
+                            else None
+                        )
+                        prev_loop_start = loop_start
 
                         if commander.boundary_violated:
+                            events.log(
+                                time.monotonic() - t0,
+                                "boundary_violated",
+                                phase="mpc",
+                                pos=list(drone.pos) if drone else None,
+                            )
                             print("\n*** BOUNDARY VIOLATED ***")
                             break
 
@@ -516,6 +569,12 @@ def main():
                             mode = "L"
                             pad_height = target_rb.pos[1] + 0.05
                             if drone.pos[1] <= pad_height + TOUCHDOWN_MARGIN:
+                                events.log(
+                                    time.monotonic() - t0,
+                                    "touchdown",
+                                    y=float(drone.pos[1]),
+                                    pad_y=float(pad_height),
+                                )
                                 commander.send_stop_setpoint()
                                 print(
                                     f"\n*** TOUCHDOWN at y={drone.pos[1]:.2f} m — motors cut ***"
@@ -539,11 +598,23 @@ def main():
                         else:
                             if landing_enabled.is_set() and target_rb is None:
                                 landing_enabled.clear()
+                                events.log(
+                                    time.monotonic() - t0,
+                                    "lost_pose",
+                                    prev_mode="L",
+                                    topic=TRACKED_OBJECT_NAME,
+                                )
                                 print(
                                     f"\n>>> Landing OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
                                 )
                             if tracking_enabled.is_set() and target_rb is None:
                                 tracking_enabled.clear()
+                                events.log(
+                                    time.monotonic() - t0,
+                                    "lost_pose",
+                                    prev_mode="T",
+                                    topic=TRACKED_OBJECT_NAME,
+                                )
                                 print(
                                     f"\n>>> Tracking OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
                                 )
@@ -554,6 +625,13 @@ def main():
                             active_target = list(TARGET)
                             mode = "M"
 
+                        if mode != prev_mode:
+                            events.log(
+                                time.monotonic() - t0,
+                                "mode_change",
+                                from_mode=prev_mode,
+                                to_mode=mode,
+                            )
                         prev_mode = mode
 
                         u_opt = mpc.compute(x0, ref)
@@ -568,8 +646,10 @@ def main():
 
                         pos = drone.pos
                         vel = drone.vel
+                        with battery_lock:
+                            vbat = battery_state["vbat"]
                         log.log(
-                            t=time.monotonic() - t0_mpc,
+                            t=time.monotonic() - t0,
                             pos=pos,
                             vel=vel,
                             target=active_target,
@@ -582,11 +662,15 @@ def main():
                             config=config,
                             mpc_status=mpc.last_status,
                             mode=mode,
+                            solve_time_ms=mpc.last_solve_time_ms,
+                            loop_dt_ms=loop_dt_ms,
+                            a_cmd_norm=float(np.linalg.norm(u_opt)),
+                            vbat=vbat,
                         )
 
                         if mpc.last_status not in ("optimal", "optimal_inaccurate"):
                             infeas.log(
-                                t=time.monotonic() - t0_mpc,
+                                t=time.monotonic() - t0,
                                 x0=x0,
                                 ref=ref,
                                 d_hat=mpc.disturbance,
