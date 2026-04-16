@@ -29,9 +29,6 @@ hardware/               # Crazyflie hardware control scripts (workspace member)
   mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
   mpc_teleop_landing.py # MPC tracking + autonomous descent on rb/landing (physical Crazyflie)
   mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
-
-archive/                # Legacy code kept for reference
-  coppeliasim/          # Previous CoppeliaSim-based simulation (replaced by Crazyflow)
 ```
 
 ### Entry Points
