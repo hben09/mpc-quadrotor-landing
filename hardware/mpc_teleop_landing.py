@@ -1,14 +1,21 @@
 """
-MPC teleop + tracking — fly via a manually-piloted setpoint, with T toggling
-autonomous tracking of the OptiTrack rigid body published as ``rb/landing``.
+MPC teleop + tracking + landing — fly via a manually-piloted setpoint, with
+T toggling autonomous tracking of the OptiTrack rigid body published as
+``rb/landing``, and L toggling autonomous descent onto it.
 
 Manual mode (default):
     WASD move target in XZ, Z/X adjust altitude, Q/E adjust target yaw.
 Tracking mode (toggle with T):
-    Drone holds 0.5 m above the landing object and yaws to match its heading.
+    Drone holds 1 m above the landing object and yaws to match its heading.
     Q/E are ignored until tracking is toggled off again.
+Landing mode (toggle with L):
+    Drone descends onto the landing object at 0.3 m/s and yaws to match its
+    heading. Motors auto-cut when within TOUCHDOWN_MARGIN of the pad.
 
-Press SPACE to take off, T to toggle tracking, Esc to stop.
+Switching out of tracking/landing back to manual keeps the drone near its
+current reference (no snap back to the previous manual target).
+
+Press SPACE to take off, T/L to toggle tracking/landing, Esc to stop.
 
 Usage:
     uv run python hardware/mpc_teleop_landing.py
@@ -32,7 +39,11 @@ import paho.mqtt.client as mqtt
 
 from mpc_landing import MPCController, MPCConfig
 from mpc_landing.mqtt.parser import RigidBodyTracker
-from mpc_landing.reference import static_reference, tracking_reference
+from mpc_landing.reference import (
+    landing_reference,
+    static_reference,
+    tracking_reference,
+)
 from mpc_landing.supervisor import SafeCommander
 from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
 
@@ -66,13 +77,15 @@ TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
 RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
+TOUCHDOWN_MARGIN = 0.10  # meters above landing pad at which motors auto-cut
 
 # Pressed-key tracking for smooth target movement
 pressed_keys = set()
 keys_lock = threading.Lock()
 
-# Tracking mode toggle
+# Tracking / landing mode toggles (mutually exclusive)
 tracking_enabled = threading.Event()
+landing_enabled = threading.Event()
 
 
 # ---------------------------------------------------------------------------
@@ -393,8 +406,27 @@ def main():
                                         )
                                         landing_missing_warned[0] = True
                                 else:
+                                    landing_enabled.clear()
                                     tracking_enabled.set()
                                     print(f"\n>>> Tracking ON ({TRACKED_OBJECT_NAME})")
+                        if c == "l" and is_new_press:
+                            if landing_enabled.is_set():
+                                landing_enabled.clear()
+                                print("\n>>> Landing OFF (manual)")
+                            else:
+                                if reader.get_target() is None:
+                                    if not landing_missing_warned[0]:
+                                        print(
+                                            f"\n>>> No '{TRACKED_OBJECT_NAME}' pose yet"
+                                            f" — staying manual"
+                                        )
+                                        landing_missing_warned[0] = True
+                                else:
+                                    tracking_enabled.clear()
+                                    landing_enabled.set()
+                                    print(
+                                        f"\n>>> Landing ON (descending onto '{TRACKED_OBJECT_NAME}')"
+                                    )
                         pressed_keys.add(c)
                 except AttributeError:
                     pressed_keys.add(key)
@@ -403,13 +435,14 @@ def main():
         listener.start()
 
         print()
-        print(f"=== MPC Teleop + Tracking — target {TARGET} ===")
+        print(f"=== MPC Teleop + Tracking + Landing — target {TARGET} ===")
         print("Press SPACE to take off, Esc to abort")
         print("WASD = move XZ, Z/X = altitude, Q/E = yaw target (hold)")
         print(f"T = toggle tracking of OptiTrack rigid body '{TRACKED_OBJECT_NAME}'")
+        print(f"L = toggle autonomous descent onto '{TRACKED_OBJECT_NAME}'")
         print("MPC tuning: 1-6 select, Up/Down adjust")
         print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_max 6:v_max")
-        print("=" * 46)
+        print("=" * 56)
 
         go.wait()
         if stop.is_set():
@@ -445,6 +478,8 @@ def main():
                     t0_mpc = time.monotonic()
                     print(f"MPC teleop active — Esc to land  (log: {log.path.name})")
                     step = 0
+                    prev_mode = "M"
+                    active_target = list(TARGET)
                     while not stop.is_set():
                         loop_start = time.monotonic()
 
@@ -462,7 +497,29 @@ def main():
                         x0 = optitrack_to_mpc_state(drone)
 
                         target_rb = reader.get_target()
-                        if tracking_enabled.is_set() and target_rb is not None:
+                        if landing_enabled.is_set() and target_rb is not None:
+                            ref = landing_reference(
+                                rigid_body_to_state(drone),
+                                rigid_body_to_state(target_rb),
+                                N,
+                                CONTROL_DT,
+                            )
+                            active_target = [
+                                float(ref[0, 0]),
+                                float(ref[0, 2]),
+                                float(ref[0, 4]),
+                            ]
+                            TARGET_YAW = target_rb.yaw
+                            mode = "L"
+                            pad_height = target_rb.pos[1] + 0.05
+                            if drone.pos[1] <= pad_height + TOUCHDOWN_MARGIN:
+                                commander.send_stop_setpoint()
+                                print(
+                                    f"\n*** TOUCHDOWN at y={drone.pos[1]:.2f} m — motors cut ***"
+                                )
+                                stop.set()
+                                break
+                        elif tracking_enabled.is_set() and target_rb is not None:
                             ref = tracking_reference(
                                 rigid_body_to_state(drone),
                                 rigid_body_to_state(target_rb),
@@ -477,15 +534,24 @@ def main():
                             TARGET_YAW = target_rb.yaw
                             mode = "T"
                         else:
+                            if landing_enabled.is_set() and target_rb is None:
+                                landing_enabled.clear()
+                                print(
+                                    f"\n>>> Landing OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
+                                )
                             if tracking_enabled.is_set() and target_rb is None:
                                 tracking_enabled.clear()
                                 print(
                                     f"\n>>> Tracking OFF (lost '{TRACKED_OBJECT_NAME}' pose)"
                                 )
+                            if prev_mode in ("T", "L"):
+                                TARGET[:] = active_target
                             update_target(CONTROL_DT)
                             ref = static_reference(TARGET, N, CONTROL_DT)
                             active_target = list(TARGET)
                             mode = "M"
+
+                        prev_mode = mode
 
                         u_opt = mpc.compute(x0, ref)
                         ax, ay, az = u_opt

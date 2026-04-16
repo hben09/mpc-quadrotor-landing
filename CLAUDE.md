@@ -27,7 +27,7 @@ sim/                    # Crazyflow simulation environment (workspace member)
 hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput) — keep barebones
   mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
-  mpc_teleop_landing.py # MPC tracking + autonomous descent on rb/landing (physical Crazyflie)
+  mpc_teleop_landing.py # MPC tracking (T, 1 m hold) + autonomous descent (L, auto-cutoff) onto rb/landing (physical Crazyflie)
   battery.py            # BatteryPublisher — cflib pm.* LogConfig → MQTT topic cf/battery
   dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
 ```
@@ -74,7 +74,7 @@ Currently used in `hardware/teleop.py`.
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
 - Hardware MPC position flight via `hardware/mpc_teleop.py` (manually-piloted setpoint, yaw-compensated accel→attitude mapping)
-- Autonomous tracking + landing on `rb/landing` via `hardware/mpc_teleop_landing.py` (hardware) and `sim/simu_mpc_teleop_landing.py` (sim), using `tracking_reference()` + `landing_reference()` from `mpc_landing/reference.py`
+- Autonomous tracking + landing on `rb/landing` via `hardware/mpc_teleop_landing.py` (hardware) and `sim/simu_mpc_teleop_landing.py` (sim), using `tracking_reference()` (1 m altitude hold) + `landing_reference()` (0.3 m/s descent) from `mpc_landing/reference.py`. In the hardware script, **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.10 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
 - Yaw P-controller in `mpc_landing/yaw_controller.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
 - MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
