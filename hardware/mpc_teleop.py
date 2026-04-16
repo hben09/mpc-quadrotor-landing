@@ -30,6 +30,7 @@ from mpc_landing.reference import static_reference
 from mpc_landing.supervisor import SafeCommander
 from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
 
+from battery import BatteryPublisher
 from csv_logger import TeleopLogger
 
 # ---------------------------------------------------------------------------
@@ -299,6 +300,9 @@ def main():
         pub.connect(MQTT_BROKER, MQTT_PORT)
         pub.loop_start()
 
+        battery = BatteryPublisher(cf, pub)
+        battery.start()
+
         # Wait for OptiTrack
         print("Waiting for OptiTrack...", end="", flush=True)
         t0 = time.monotonic()
@@ -353,6 +357,7 @@ def main():
         go.wait()
         if stop.is_set():
             print("Aborted.")
+            battery.stop()
             reader.stop()
             pub.loop_stop()
             pub.disconnect()
@@ -461,6 +466,7 @@ def main():
                 commander.send_stop_setpoint()
                 commander.send_notify_setpoint_stop()
                 time.sleep(0.1)
+                battery.stop()
                 pub.loop_stop()
                 pub.disconnect()
                 reader.stop()

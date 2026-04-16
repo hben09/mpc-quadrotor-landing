@@ -32,6 +32,9 @@ DRONE_TOPIC = "rb/crazyflie"
 LANDING_TOPIC = "rb/landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
+BATTERY_TOPIC = "cf/battery"
+
+BATTERY_STATE_LABELS = {0: "OK", 1: "CHG", 2: "LOW", 3: "SHUT"}
 CALLBACK_MS = 50  # 20 Hz
 MAX_TRAIL_POINTS = 2000
 DRONE_RADIUS = 0.05
@@ -49,6 +52,7 @@ class TrackedState:
         self._landing: MQTTRigidBody | None = None
         self._mpc_target: list[float] | None = None
         self._mpc_traj: list[list[float]] | None = None
+        self._battery: dict | None = None
 
     def set_drone(self, rb: MQTTRigidBody):
         with self._lock:
@@ -66,6 +70,10 @@ class TrackedState:
         with self._lock:
             self._mpc_traj = points
 
+    def set_battery(self, battery: dict):
+        with self._lock:
+            self._battery = battery
+
     def get(self) -> tuple[MQTTRigidBody | None, MQTTRigidBody | None]:
         with self._lock:
             return self._drone, self._landing
@@ -73,6 +81,10 @@ class TrackedState:
     def get_mpc(self) -> tuple[list[float] | None, list[list[float]] | None]:
         with self._lock:
             return self._mpc_target, self._mpc_traj
+
+    def get_battery(self) -> dict | None:
+        with self._lock:
+            return self._battery
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +178,10 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
         client.subscribe(LANDING_TOPIC)
         client.subscribe(MPC_TARGET_TOPIC)
         client.subscribe(MPC_TRAJ_TOPIC)
-        print(f"Subscribed to '{DRONE_TOPIC}', '{LANDING_TOPIC}', 'mpc/#'")
+        client.subscribe(BATTERY_TOPIC)
+        print(
+            f"Subscribed to '{DRONE_TOPIC}', '{LANDING_TOPIC}', 'mpc/#', '{BATTERY_TOPIC}'"
+        )
 
     def on_message(client, userdata, msg):
         try:
@@ -182,6 +197,8 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
             elif msg.topic == MPC_TRAJ_TOPIC:
                 data = json.loads(msg.payload.decode())
                 state.set_mpc_traj(data["points"])
+            elif msg.topic == BATTERY_TOPIC:
+                state.set_battery(json.loads(msg.payload.decode()))
         except Exception as e:
             print(f"Parse error on {msg.topic}: {e}")
 
@@ -329,8 +346,14 @@ def main():
             )
         else:
             drone_lines = "drone: --\n"
+        battery = state.get_battery()
+        if battery is not None:
+            label = BATTERY_STATE_LABELS.get(battery["state"], f"?{battery['state']}")
+            battery_line = f"bat: {battery['vbat']:.2f}V {battery['level']}% [{label}]"
+        else:
+            battery_line = "bat: --"
         plotter.add_text(
-            f"{drone_lines}{mpc_line}",
+            f"{drone_lines}{mpc_line}\n{battery_line}",
             position="upper_right",
             font_size=10,
             name="hud",
