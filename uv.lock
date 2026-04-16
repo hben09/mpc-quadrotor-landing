@@ -4,6 +4,7 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
+    "limo",
     "mpc-hardware",
     "mpc-landing",
     "mpc-quadrotor-landing",
@@ -820,6 +821,23 @@ wheels = [
 ]
 
 [[package]]
+name = "limo"
+version = "0.1.0"
+source = { editable = "limo" }
+dependencies = [
+    { name = "mpc-landing" },
+    { name = "paho-mqtt" },
+    { name = "pynput" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mpc-landing", editable = "mpc_landing" },
+    { name = "paho-mqtt" },
+    { name = "pynput" },
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1044,6 +1062,7 @@ name = "mpc-quadrotor-landing"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "limo" },
     { name = "mpc-hardware" },
     { name = "mpc-landing" },
     { name = "sim" },
@@ -1051,6 +1070,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "limo", editable = "limo" },
     { name = "mpc-hardware", editable = "hardware" },
     { name = "mpc-landing", editable = "mpc_landing" },
     { name = "sim", editable = "sim" },

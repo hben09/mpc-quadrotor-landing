@@ -7,12 +7,14 @@ dependencies = [
     "sim",
     "mpc-landing",
     "mpc-hardware",
+    "limo",
 ]
 
 [tool.uv.sources]
 sim = { workspace = true }
 mpc-landing = { workspace = true }
 mpc-hardware = { workspace = true }
+limo = { workspace = true }
 
 [tool.uv.workspace]
-members = ["mpc_landing", "sim", "hardware"]
+members = ["mpc_landing", "sim", "hardware", "limo"]

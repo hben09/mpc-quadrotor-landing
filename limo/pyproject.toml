@@ -1,0 +1,22 @@
+[project]
+name = "limo"
+version = "0.1.0"
+description = "RASTIC LIMO ground robot control"
+requires-python = ">=3.13"
+dependencies = [
+    "mpc-landing",
+    "paho-mqtt",
+    "pynput",
+]
+
+[tool.setuptools]
+packages = ["limo"]
+
+[tool.setuptools.package-dir]
+limo = "."
+
+[project.scripts]
+limo-teleop = "limo.teleop:main"
+
+[tool.uv.sources]
+mpc-landing = { workspace = true }
