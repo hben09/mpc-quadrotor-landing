@@ -12,7 +12,7 @@ mpc_landing/            # Core control library (workspace member, importable pac
   reference.py          # Reference trajectory generation (tracking, landing, static)
   boundary.py           # RASTIC arena boundary safety checker
   supervisor.py         # SafeCommander — boundary safety supervisor wrapping cf.commander
-  yaw.py                # P yaw controller (OptiTrack CCW+ → cflib CW+ sign flip, deg/s output)
+  yaw_controller.py     # P yaw controller (OptiTrack CCW+ → cflib CW+ sign flip, deg/s output)
   mqtt/                 # MQTT rigid-body pose streaming from OptiTrack
     parser.py           # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
     sub.py              # MQTT subscriber for drone (crazyflie) and landing target (rb/landing) poses
@@ -74,7 +74,7 @@ Currently used in `hardware/teleop.py`.
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
 - Hardware MPC position flight via `hardware/mpc_teleop.py` (manually-piloted setpoint, yaw-compensated accel→attitude mapping)
 - Autonomous tracking + landing on `rb/landing` via `hardware/mpc_teleop_landing.py` (hardware) and `sim/simu_mpc_teleop_landing.py` (sim), using `tracking_reference()` + `landing_reference()` from `mpc_landing/reference.py`
-- Yaw P-controller in `mpc_landing/yaw.py` runs alongside position MPC (decoupled world-frame axis)
+- Yaw P-controller in `mpc_landing/yaw_controller.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
 - MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
 

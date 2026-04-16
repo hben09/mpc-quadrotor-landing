@@ -30,7 +30,7 @@ from mpc_landing import MPCController, MPCConfig
 from mpc_landing.mqtt.parser import RigidBodyTracker
 from mpc_landing.reference import static_reference
 from mpc_landing.supervisor import SafeCommander
-from mpc_landing.yaw import compute_yawrate, wrap_to_pi
+from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
 
 # ---------------------------------------------------------------------------
 # Constants
