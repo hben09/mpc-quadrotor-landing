@@ -1,6 +1,7 @@
 """CSV logging helper for hardware MPC teleop scripts."""
 
 import csv
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,7 @@ _COLUMNS = [
     "R",
     "a_max",
     "v_max",
+    "mpc_status",
 ]
 
 
@@ -73,6 +75,7 @@ class TeleopLogger:
         target_yaw,
         yawrate,
         config,
+        mpc_status="",
         mode=None,
     ):
         roll, pitch, thrust = setpoint
@@ -103,7 +106,43 @@ class TeleopLogger:
             f"{config.R_diag[0]:.2f}",
             f"{config.a_max:.2f}",
             f"{config.v_max:.2f}",
+            f"{mpc_status}",
         ]
         if self._include_mode:
             row.append(mode if mode is not None else "")
         self._writer.writerow(row)
+
+
+class InfeasibilityLogger:
+    def __init__(self, log_dir: Path, csv_path: Path):
+        log_dir.mkdir(exist_ok=True)
+        self.path = log_dir / (csv_path.stem + "_infeasible.jsonl")
+        self._file = None
+
+    def __enter__(self):
+        self._file = open(self.path, "w")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._file is not None:
+            self._file.close()
+
+    def log(self, *, t, x0, ref, d_hat, config, status):
+        ev = {
+            "t": float(t),
+            "status": str(status),
+            "d_hat": float(d_hat),
+            "x0": [float(v) for v in x0],
+            "ref": ref.tolist(),
+            "config": {
+                "dt": config.dt,
+                "horizon": config.horizon,
+                "Q_diag": list(config.Q_diag),
+                "Qf_diag": list(config.Qf_diag),
+                "R_diag": list(config.R_diag),
+                "a_max": config.a_max,
+                "v_max": config.v_max,
+            },
+        }
+        self._file.write(json.dumps(ev) + "\n")
+        self._file.flush()

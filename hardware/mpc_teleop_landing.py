@@ -48,7 +48,7 @@ from mpc_landing.supervisor import SafeCommander
 from mpc_landing.yaw_controller import compute_yawrate, wrap_to_pi
 
 from battery import BatteryPublisher
-from csv_logger import TeleopLogger
+from csv_logger import TeleopLogger, InfeasibilityLogger
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -474,7 +474,8 @@ def main():
 
                 # MPC control loop
                 log_dir = Path(__file__).resolve().parent / "logs"
-                with TeleopLogger(log_dir, include_mode=True) as log:
+                with TeleopLogger(log_dir, include_mode=True) as log, \
+                        InfeasibilityLogger(log_dir, log.path) as infeas:
                     t0_mpc = time.monotonic()
                     print(f"MPC teleop active — Esc to land  (log: {log.path.name})")
                     step = 0
@@ -577,8 +578,19 @@ def main():
                             target_yaw=TARGET_YAW,
                             yawrate=yawrate,
                             config=config,
+                            mpc_status=mpc.last_status,
                             mode=mode,
                         )
+
+                        if mpc.last_status not in ("optimal", "optimal_inaccurate"):
+                            infeas.log(
+                                t=time.monotonic() - t0_mpc,
+                                x0=x0,
+                                ref=ref,
+                                d_hat=mpc.disturbance,
+                                config=config,
+                                status=mpc.last_status,
+                            )
 
                         step += 1
                         if step % 5 == 0:

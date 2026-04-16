@@ -84,6 +84,7 @@ class MPCController:
         # Disturbance estimator gain (simple single-step correction)
         self._d_hat = 0.0
         self._x_pred = None
+        self._last_status = ""
 
         self.nx = nx
         self.nu = nu
@@ -166,6 +167,7 @@ class MPCController:
 
         try:
             self.problem.solve(solver=cp.OSQP, warm_start=True)
+            self._last_status = self.problem.status
 
             if self.problem.status in ("optimal", "optimal_inaccurate"):
                 # Store predicted next state for disturbance estimation
@@ -177,6 +179,7 @@ class MPCController:
                 return np.zeros(3)
         except cp.SolverError as e:
             print(f"MPC solver error: {e}")
+            self._last_status = "solver_error"
             self._x_pred = None
             return np.zeros(3)
 
@@ -190,6 +193,10 @@ class MPCController:
     def disturbance(self):
         """Current disturbance estimate (m/s^2 bias on vertical acceleration)."""
         return self._d_hat
+
+    @property
+    def last_status(self):
+        return self._last_status
 
     def get_planned_inputs(self):
         """Return the full planned input sequence (useful for visualization)."""
