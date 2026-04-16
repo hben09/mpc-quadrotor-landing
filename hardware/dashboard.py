@@ -6,8 +6,8 @@ Subscribes to OptiTrack rigid-body data over MQTT and displays the drone
 RASTIC arena boundaries and a flight trail.
 
 Usage:
-    uv run mqtt-viewer
-    uv run mqtt-viewer --broker localhost
+    uv run dashboard
+    uv run dashboard --broker localhost
 """
 
 import argparse

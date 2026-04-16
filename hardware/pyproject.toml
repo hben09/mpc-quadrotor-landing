@@ -13,11 +13,11 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["teleop", "mqtt_viewer", "mpc_teleop"]
+py-modules = ["teleop", "dashboard", "mpc_teleop"]
 
 [project.scripts]
 hw-teleop = "teleop:main"
-mqtt-viewer = "mqtt_viewer:main"
+dashboard = "dashboard:main"
 mpc-teleop = "mpc_teleop:main"
 
 [tool.uv.sources]

@@ -1,7 +1,7 @@
 """
 MPC teleop — fly via a manually-piloted setpoint.
 
-Publishes target to mpc/target so mqtt_viewer shows it.
+Publishes target to mpc/target so dashboard shows it.
 Press SPACE to take off, Esc to stop.
 
 Usage:
@@ -306,7 +306,7 @@ def main():
             time.sleep(0.05)
         print(" OK")
 
-        # Publish target so mqtt_viewer shows it
+        # Publish target so dashboard shows it
         pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET, "yaw": TARGET_YAW}))
 
         # Wait for SPACE

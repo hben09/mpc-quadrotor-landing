@@ -1,7 +1,7 @@
 """
 MPC tracker — follow the OptiTrack rigid body published as ``rb/landing``.
 
-Publishes the active MPC reference to ``mpc/target`` so ``mqtt_viewer`` shows
+Publishes the active MPC reference to ``mpc/target`` so ``dashboard`` shows
 the tracked point above the landing object.
 Press SPACE to take off, Esc to stop.
 

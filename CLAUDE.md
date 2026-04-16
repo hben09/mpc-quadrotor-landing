@@ -28,7 +28,7 @@ hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput)
   mpc_teleop.py         # MPC position controller with manually-piloted setpoint (WASD/QE, runtime tuning, CSV logging)
   mpc_teleop_landing.py # MPC tracking + autonomous descent on rb/landing (physical Crazyflie)
-  mqtt_viewer.py        # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
+  dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
 ```
 
 ### Entry Points
@@ -36,7 +36,7 @@ hardware/               # Crazyflie hardware control scripts (workspace member)
 All scripts are runnable via `uv run <command>`:
 - `hw-teleop` — manual attitude flight with physical Crazyflie
 - `mpc-teleop` — MPC position flight with manually-piloted setpoint (physical Crazyflie)
-- `mqtt-viewer` — real-time 3D drone position viewer (OptiTrack via MQTT)
+- `dashboard` — real-time 3D drone position viewer (OptiTrack via MQTT)
 - `sim-mpc` — MPC simulation with virtual target
 - `sim-mpc-ground` — MPC simulation with physics-based ground vehicle
 - `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere)
