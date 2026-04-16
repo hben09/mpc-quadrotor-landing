@@ -80,6 +80,7 @@ RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
 TOUCHDOWN_MARGIN = 0.10  # meters above landing pad at which motors auto-cut
+TOUCHDOWN_RAMP_DURATION = 4.0  # seconds to linearly ramp thrust to 0 after touchdown
 
 # Pressed-key tracking for smooth target movement
 pressed_keys = set()
@@ -524,6 +525,7 @@ def main():
                     prev_mode = "M"
                     prev_loop_start = None
                     active_target = list(TARGET)
+                    last_thrust = HOVER_PWM
                     while not stop.is_set():
                         loop_start = time.monotonic()
                         loop_dt_ms = (
@@ -574,11 +576,31 @@ def main():
                                     "touchdown",
                                     y=float(drone.pos[1]),
                                     pad_y=float(pad_height),
+                                    ramp_duration_s=TOUCHDOWN_RAMP_DURATION,
+                                    start_thrust=int(last_thrust),
                                 )
-                                commander.send_stop_setpoint()
                                 print(
-                                    f"\n*** TOUCHDOWN at y={drone.pos[1]:.2f} m — motors cut ***"
+                                    f"\n*** TOUCHDOWN at y={drone.pos[1]:.2f} m — ramping motors down over {TOUCHDOWN_RAMP_DURATION:.1f}s ***"
                                 )
+                                rampdown_start = time.monotonic()
+                                while not stop.is_set():
+                                    elapsed = time.monotonic() - rampdown_start
+                                    if elapsed >= TOUCHDOWN_RAMP_DURATION:
+                                        break
+                                    if commander.boundary_violated:
+                                        break
+                                    frac = 1.0 - elapsed / TOUCHDOWN_RAMP_DURATION
+                                    commander.send_setpoint(
+                                        0.0, 0.0, 0.0, int(last_thrust * frac)
+                                    )
+                                    time.sleep(CONTROL_DT)
+                                commander.send_stop_setpoint()
+                                events.log(
+                                    time.monotonic() - t0,
+                                    "motors_off",
+                                    y=float(drone.pos[1]) if drone else None,
+                                )
+                                print("*** Motors off ***")
                                 stop.set()
                                 break
                         elif tracking_enabled.is_set() and target_rb is not None:
@@ -643,6 +665,7 @@ def main():
                         )
                         yawrate = compute_yawrate(yaw, TARGET_YAW)
                         commander.send_setpoint(roll, pitch, yawrate, thrust)
+                        last_thrust = thrust
 
                         pos = drone.pos
                         vel = drone.vel
