@@ -43,8 +43,8 @@ HOVER_PWM = 45000
 HOVER_ALTITUDE = 1.0
 MAX_TILT_DEG = 10.0
 TARGET = [0.0, HOVER_ALTITUDE, 0.0]
-TARGET_YAW = 0.0                 # radians, OptiTrack frame (CCW+)
-YAW_SPEED = np.radians(60.0)     # rad/s while Left/Right held
+TARGET_YAW = 0.0  # radians, OptiTrack frame (CCW+)
+YAW_SPEED = np.radians(60.0)  # rad/s while Left/Right held
 
 MQTT_BROKER = "rasticvm.internal"
 MQTT_PORT = 1883
@@ -67,11 +67,16 @@ keys_lock = threading.Lock()
 # Helpers
 # ---------------------------------------------------------------------------
 def optitrack_to_mpc_state(rb):
-    return np.array([
-        rb.pos[0], rb.vel[0],
-        rb.pos[1], rb.vel[1],
-        rb.pos[2], rb.vel[2],
-    ])
+    return np.array(
+        [
+            rb.pos[0],
+            rb.vel[0],
+            rb.pos[1],
+            rb.vel[1],
+            rb.pos[2],
+            rb.vel[2],
+        ]
+    )
 
 
 def mpc_accel_to_cflib_setpoint(ax, ay, az, yaw):
@@ -92,12 +97,12 @@ def mpc_accel_to_cflib_setpoint(ax, ay, az, yaw):
 TUNABLE_PARAMS = [
     # (short_name, step, min, max, getter, setter)
     # getter/setter operate on an MPCConfig instance
-    ("Qp",  2.0,   1.0,  100.0),  # 1: Q position
-    ("Qv",  0.5,   0.1,   20.0),  # 2: Q velocity
-    ("Qf", 20.0,  10.0,  500.0),  # 3: Qf terminal
-    ("R",   0.5,  0.01,   20.0),  # 4: R effort
-    ("a",   0.5,   1.0,   15.0),  # 5: a_max
-    ("v",   0.25,  0.5,    5.0),  # 6: v_max
+    ("Qp", 2.0, 1.0, 100.0),  # 1: Q position
+    ("Qv", 0.5, 0.1, 20.0),  # 2: Q velocity
+    ("Qf", 20.0, 10.0, 500.0),  # 3: Qf terminal
+    ("R", 0.5, 0.01, 20.0),  # 4: R effort
+    ("a", 0.5, 1.0, 15.0),  # 5: a_max
+    ("v", 0.25, 0.5, 5.0),  # 6: v_max
 ]
 
 
@@ -234,22 +239,22 @@ def update_target(dt):
     with keys_lock:
         keys = set(pressed_keys)
     step = TARGET_SPEED * dt
-    if 'w' in keys:
+    if "w" in keys:
         TARGET[0] += step
-    if 's' in keys:
+    if "s" in keys:
         TARGET[0] -= step
-    if 'd' in keys:
+    if "d" in keys:
         TARGET[2] += step
-    if 'a' in keys:
+    if "a" in keys:
         TARGET[2] -= step
-    if 'x' in keys:
+    if "x" in keys:
         TARGET[1] = min(TARGET[1] + step, 2.0)
-    if 'z' in keys:
+    if "z" in keys:
         TARGET[1] = max(TARGET[1] - step, 0.3)
-    if 'q' in keys:
-        TARGET_YAW += YAW_SPEED * dt       # q = left = CCW = + in OptiTrack
-    if 'e' in keys:
-        TARGET_YAW -= YAW_SPEED * dt       # e = right = CW
+    if "q" in keys:
+        TARGET_YAW += YAW_SPEED * dt  # q = left = CCW = + in OptiTrack
+    if "e" in keys:
+        TARGET_YAW -= YAW_SPEED * dt  # e = right = CW
     TARGET_YAW = wrap_to_pi(TARGET_YAW)
 
 
@@ -326,9 +331,9 @@ def main():
             # Track held keys for smooth target movement
             with keys_lock:
                 try:
-                    if hasattr(key, 'char') and key.char:
+                    if hasattr(key, "char") and key.char:
                         c = key.char.lower()
-                        if c in '123456':
+                        if c in "123456":
                             tuner.select(int(c) - 1)
                         pressed_keys.add(c)
                 except AttributeError:
@@ -378,13 +383,36 @@ def main():
                 log_path = log_dir / f"teleop_{datetime.now():%Y%m%d_%H%M%S}.csv"
                 log_file = open(log_path, "w", newline="")
                 log_writer = csv.writer(log_file)
-                log_writer.writerow([
-                    "t", "px", "py", "pz", "vx", "vy", "vz",
-                    "tx", "ty", "tz", "ax", "ay", "az",
-                    "roll", "pitch", "thrust",
-                    "d_hat", "yaw", "target_yaw", "yawrate",
-                    "Qp", "Qv", "Qf", "R", "a_max", "v_max",
-                ])
+                log_writer.writerow(
+                    [
+                        "t",
+                        "px",
+                        "py",
+                        "pz",
+                        "vx",
+                        "vy",
+                        "vz",
+                        "tx",
+                        "ty",
+                        "tz",
+                        "ax",
+                        "ay",
+                        "az",
+                        "roll",
+                        "pitch",
+                        "thrust",
+                        "d_hat",
+                        "yaw",
+                        "target_yaw",
+                        "yawrate",
+                        "Qp",
+                        "Qv",
+                        "Qf",
+                        "R",
+                        "a_max",
+                        "v_max",
+                    ]
+                )
                 t0_mpc = time.monotonic()
                 print(f"MPC teleop active — Esc to land  (log: {log_path.name})")
                 step = 0
@@ -416,19 +444,36 @@ def main():
                     # Log every step to CSV
                     pos = drone.pos
                     vel = drone.vel
-                    log_writer.writerow([
-                        f"{time.monotonic() - t0_mpc:.3f}",
-                        f"{pos[0]:.4f}", f"{pos[1]:.4f}", f"{pos[2]:.4f}",
-                        f"{vel[0]:.4f}", f"{vel[1]:.4f}", f"{vel[2]:.4f}",
-                        f"{TARGET[0]:.4f}", f"{TARGET[1]:.4f}", f"{TARGET[2]:.4f}",
-                        f"{ax:.4f}", f"{ay:.4f}", f"{az:.4f}",
-                        f"{roll:.2f}", f"{pitch:.2f}", f"{thrust}",
-                        f"{mpc.disturbance:.4f}", f"{yaw:.4f}",
-                        f"{TARGET_YAW:.4f}", f"{yawrate:.2f}",
-                        f"{config.Q_diag[0]:.2f}", f"{config.Q_diag[1]:.2f}",
-                        f"{config.Qf_diag[0]:.2f}", f"{config.R_diag[0]:.2f}",
-                        f"{config.a_max:.2f}", f"{config.v_max:.2f}",
-                    ])
+                    log_writer.writerow(
+                        [
+                            f"{time.monotonic() - t0_mpc:.3f}",
+                            f"{pos[0]:.4f}",
+                            f"{pos[1]:.4f}",
+                            f"{pos[2]:.4f}",
+                            f"{vel[0]:.4f}",
+                            f"{vel[1]:.4f}",
+                            f"{vel[2]:.4f}",
+                            f"{TARGET[0]:.4f}",
+                            f"{TARGET[1]:.4f}",
+                            f"{TARGET[2]:.4f}",
+                            f"{ax:.4f}",
+                            f"{ay:.4f}",
+                            f"{az:.4f}",
+                            f"{roll:.2f}",
+                            f"{pitch:.2f}",
+                            f"{thrust}",
+                            f"{mpc.disturbance:.4f}",
+                            f"{yaw:.4f}",
+                            f"{TARGET_YAW:.4f}",
+                            f"{yawrate:.2f}",
+                            f"{config.Q_diag[0]:.2f}",
+                            f"{config.Q_diag[1]:.2f}",
+                            f"{config.Qf_diag[0]:.2f}",
+                            f"{config.R_diag[0]:.2f}",
+                            f"{config.a_max:.2f}",
+                            f"{config.v_max:.2f}",
+                        ]
+                    )
 
                     step += 1
                     if step % 5 == 0:
@@ -444,10 +489,15 @@ def main():
                         )
                         sys.stdout.flush()
 
-                        pub.publish(MPC_TARGET_TOPIC, json.dumps({"pos": TARGET, "yaw": TARGET_YAW}))
+                        pub.publish(
+                            MPC_TARGET_TOPIC,
+                            json.dumps({"pos": TARGET, "yaw": TARGET_YAW}),
+                        )
                         planned = mpc.get_planned_trajectory()
                         if planned is not None:
-                            pts = [[float(r[0]), float(r[2]), float(r[4])] for r in planned]
+                            pts = [
+                                [float(r[0]), float(r[2]), float(r[4])] for r in planned
+                            ]
                             pub.publish(MPC_TRAJ_TOPIC, json.dumps({"points": pts}))
 
                     elapsed = time.monotonic() - loop_start
