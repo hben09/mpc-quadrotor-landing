@@ -13,7 +13,7 @@ from pynput import keyboard
 
 from limo.client import MAX_LINEAR_VEL, MAX_STEERING, LimoClient
 from limo.pose import DEFAULT_BROKER, DEFAULT_MQTT_PORT, LimoPoseSubscriber, topic_for
-from limo.registry import DEFAULT_LIMO, TCP_PORT, ip_for
+from limo.registry import DEFAULT_LIMO, UDP_PORT, ip_for
 
 CONTROL_HZ = 50.0
 CONTROL_DT = 1.0 / CONTROL_HZ
@@ -69,7 +69,7 @@ def main() -> None:
                         help="LIMO ID (number on the robot). Resolves IP via registry.")
     parser.add_argument("--ip", default=None,
                         help="Override TCP IP (skips registry lookup)")
-    parser.add_argument("--port", type=int, default=TCP_PORT, help="TCP command port")
+    parser.add_argument("--port", type=int, default=UDP_PORT, help="UDP command port")
     parser.add_argument("--broker", default=DEFAULT_BROKER, help="MQTT broker hostname")
     parser.add_argument("--mqtt-port", type=int, default=DEFAULT_MQTT_PORT)
     parser.add_argument("--mqtt-topic", default=None,

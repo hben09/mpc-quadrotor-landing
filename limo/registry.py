@@ -10,7 +10,7 @@ LIMOS: dict[str, str] = {
 }
 
 DEFAULT_LIMO = "809"
-TCP_PORT = 12345
+UDP_PORT = 12346  # our server; coexists with the class's TCP 12345
 
 
 def ip_for(limo_id: str) -> str:
