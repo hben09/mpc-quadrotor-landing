@@ -17,6 +17,7 @@ class MQTTRigidBody:
                             # NOTE: euler[1] is gimbal-locked to ±π/2; use `yaw` for full range.
     yaw: float              # heading about Y/up, full ±π range, computed directly from quaternion
     vel: list[float]        # [vx, vy, vz] m/s (zero until tracker computes it)
+    yaw_rate: float         # rad/s about Y/up (zero until tracker computes it)
     metadata: dict          # raw metadata dict
     timestamp: float        # motive_timestamp (seconds)
 
@@ -50,6 +51,7 @@ def parse_rigid_body(payload: str) -> MQTTRigidBody:
         euler=euler,
         yaw=yaw,
         vel=[0.0, 0.0, 0.0],
+        yaw_rate=0.0,
         metadata=metadata,
         timestamp=timestamp,
     )
@@ -58,8 +60,10 @@ def parse_rigid_body(payload: str) -> MQTTRigidBody:
 class RigidBodyTracker:
     """Track a rigid body over time and compute velocity via finite differencing."""
 
-    def __init__(self):
+    def __init__(self, yaw_rate_tau: float = 0.15):
         self._prev: MQTTRigidBody | None = None
+        self._yaw_rate_ema: float = 0.0
+        self._yaw_rate_tau = yaw_rate_tau
 
     def update(self, payload: str) -> MQTTRigidBody:
         """Parse a new message and compute velocity from the previous one."""
@@ -71,6 +75,16 @@ class RigidBodyTracker:
                 rb.vel = [
                     (rb.pos[i] - self._prev.pos[i]) / dt for i in range(3)
                 ]
+                dyaw = float(np.arctan2(
+                    np.sin(rb.yaw - self._prev.yaw),
+                    np.cos(rb.yaw - self._prev.yaw),
+                ))
+                raw_rate = dyaw / dt
+                alpha = dt / (self._yaw_rate_tau + dt)
+                self._yaw_rate_ema = (
+                    (1.0 - alpha) * self._yaw_rate_ema + alpha * raw_rate
+                )
+                rb.yaw_rate = self._yaw_rate_ema
 
         self._prev = rb
         return rb

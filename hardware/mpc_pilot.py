@@ -126,6 +126,7 @@ def rigid_body_to_state(rb):
     return {
         "pos": list(rb.pos),
         "vel": list(rb.vel),
+        "yaw_rate": rb.yaw_rate,
     }
 
 
