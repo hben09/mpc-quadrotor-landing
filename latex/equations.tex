@@ -1,0 +1,74 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{parskip}
+\usepackage{mathbbol}
+\usepackage{graphicx}
+\usepackage{pdfpages}
+\usepackage{setspace}
+\geometry{margin=1in}
+
+\title{}
+\author{}
+\date{}
+
+\begin{document}
+\doublespacing
+\maketitle
+
+\section{Optimal Control Problem}
+
+Based on \texttt{mpc\_landing/mpc.py}:
+
+\begin{equation}
+\begin{aligned}
+\min_{\{x[t],\,u[t]\}_{t=0}^{N-1}} \quad 
+& \sum_{t=0}^{N-1} \Big[
+(x[t]-x_{\mathrm{ref}}[t])^\top Q (x[t]-x_{\mathrm{ref}}[t])
++ (u[t]-u_{\mathrm{eq}})^\top R (u[t]-u_{\mathrm{eq}})
+\Big] \\
+& \quad + (x[N]-x_{\mathrm{ref}}[N])^\top Q_f (x[N]-x_{\mathrm{ref}}[N]) \\
+\text{s.t.} \quad
+& x[t+1] = A x[t] + B u[t] + g, \quad t = 0,\dots,N-1, \\
+& x[0] = x_0^{\mathrm{aug}}, \\
+& -a_{\max}\mathbf{1} \le u[t] \le a_{\max}\mathbf{1}, \quad t = 0,\dots,N-1, \\
+& -v_{\max} \le x_{2i+1}[t] \le v_{\max}, \quad i=0,1,2,\; t = 1,\dots,N.
+\end{aligned}
+\end{equation}
+
+\begin{equation}
+x[t] =
+\begin{bmatrix}
+p_x[t] \\ v_x[t] \\ p_y[t] \\ v_y[t] \\ p_z[t] \\ v_z[t] \\ d[t]
+\end{bmatrix},
+\qquad
+u[t] =
+\begin{bmatrix}
+a_x[t] \\ a_y[t] \\ a_z[t]
+\end{bmatrix}.
+\end{equation}
+
+\begin{equation}
+u_{\mathrm{eq}} =
+\begin{bmatrix}
+0 \\ g \\ 0
+\end{bmatrix}.
+\end{equation}
+
+In this optimal control problem, the state vector $x[t]\in\mathbb{R}^7$ represents the system configuration at time step $t$, consisting of positions and velocities in three spatial directions together with a disturbance term, i.e.,
+\[
+x[t]=[p_x[t],\,v_x[t],\,p_y[t],\,v_y[t],\,p_z[t],\,v_z[t],\,d[t]]^\top,
+\]
+where $d[t]$ models a constant bias in vertical acceleration. The control input $u[t]\in\mathbb{R}^3$ denotes the commanded accelerations along each axis,
+\[
+u[t]=[a_x[t],\,a_y[t],\,a_z[t]]^\top.
+\]
+The matrices $A$ and $B$ define the discrete-time linear dynamics of a double-integrator system, while the vector $g$ accounts for the effect of gravity as an affine term. The initial condition $x_0^{\mathrm{aug}}$ is the current measured state augmented with the disturbance estimate. The reference trajectory $x_{\mathrm{ref}}[t]$ specifies the desired positions and velocities over the prediction horizon, and the objective function penalizes deviations from this reference using the positive semidefinite weighting matrices $Q$ and $Q_f$ for stage and terminal costs, respectively. The matrix $R$ penalizes control effort relative to the equilibrium input $u_{\mathrm{eq}}$, which corresponds to the hover condition that balances gravity. The scalar bounds $a_{\max}$ and $v_{\max}$ impose infinity-norm constraints on the control inputs and velocities, ensuring that accelerations and speeds remain within physically feasible limits. The horizon length $N$ defines the number of discrete time steps over which the optimization is performed.
+
+
+
+\end{document}
