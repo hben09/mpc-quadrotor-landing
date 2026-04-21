@@ -606,6 +606,7 @@ def main():
                                         )
                                         time.sleep(CONTROL_DT)
                                     commander.send_stop_setpoint()
+                                    commander.send_notify_setpoint_stop()
                                     events.log(
                                         time.monotonic() - t0,
                                         "motors_off",
