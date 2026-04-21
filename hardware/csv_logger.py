@@ -41,6 +41,13 @@ _COLUMNS = [
     "loop_dt_ms",
     "a_cmd_norm",
     "vbat",
+    "e_px",
+    "e_py",
+    "e_pz",
+    "e_vx",
+    "e_vy",
+    "e_vz",
+    "e_yaw",
 ]
 
 
@@ -89,6 +96,9 @@ class TeleopLogger:
         loop_dt_ms=None,
         a_cmd_norm=None,
         vbat=None,
+        pos_error,
+        vel_error,
+        yaw_error,
     ):
         roll, pitch, thrust = setpoint
         row = [
@@ -123,6 +133,13 @@ class TeleopLogger:
             "" if loop_dt_ms is None else f"{loop_dt_ms:.3f}",
             "" if a_cmd_norm is None else f"{a_cmd_norm:.4f}",
             "" if vbat is None else f"{vbat:.3f}",
+            f"{pos_error[0]:.4f}",
+            f"{pos_error[1]:.4f}",
+            f"{pos_error[2]:.4f}",
+            f"{vel_error[0]:.4f}",
+            f"{vel_error[1]:.4f}",
+            f"{vel_error[2]:.4f}",
+            f"{yaw_error:.4f}",
         ]
         if self._include_mode:
             row.append(mode if mode is not None else "")

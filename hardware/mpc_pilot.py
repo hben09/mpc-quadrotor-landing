@@ -671,6 +671,17 @@ def main():
                         vel = drone.vel
                         with battery_lock:
                             vbat = battery_state["vbat"]
+                        pos_error = (
+                            active_target[0] - pos[0],
+                            active_target[1] - pos[1],
+                            active_target[2] - pos[2],
+                        )
+                        vel_error = (
+                            float(ref[0, 1]) - vel[0],
+                            float(ref[0, 3]) - vel[1],
+                            float(ref[0, 5]) - vel[2],
+                        )
+                        yaw_error = float(wrap_to_pi(TARGET_YAW - yaw))
                         log.log(
                             t=time.monotonic() - t0,
                             pos=pos,
@@ -689,6 +700,9 @@ def main():
                             loop_dt_ms=loop_dt_ms,
                             a_cmd_norm=float(np.linalg.norm(u_opt)),
                             vbat=vbat,
+                            pos_error=pos_error,
+                            vel_error=vel_error,
+                            yaw_error=yaw_error,
                         )
 
                         if mpc.last_status not in ("optimal", "optimal_inaccurate"):
@@ -703,10 +717,9 @@ def main():
 
                         step += 1
                         if step % 5 == 0:
-                            err = [active_target[i] - pos[i] for i in range(3)]
                             sys.stdout.write(
                                 f"\r[{mode}] pos=({pos[0]:+.2f},{pos[1]:+.2f},{pos[2]:+.2f}) "
-                                f"err=({err[0]:+.2f},{err[1]:+.2f},{err[2]:+.2f}) "
+                                f"err=({pos_error[0]:+.2f},{pos_error[1]:+.2f},{pos_error[2]:+.2f}) "
                                 f"a=({ax:+5.1f},{ay:+5.1f},{az:+5.1f}) "
                                 f"R:{roll:+5.1f} P:{pitch:+5.1f} T:{thrust:5d} "
                                 f"yaw:{np.degrees(yaw):+5.1f}°→{np.degrees(TARGET_YAW):+5.1f}° "
