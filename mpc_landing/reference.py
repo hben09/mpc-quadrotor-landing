@@ -54,7 +54,7 @@ def tracking_reference(drone_state, limo_state, N, dt):
     limo_vel = np.array(limo_state["vel"])
     w = limo_state.get("yaw_rate", 0.0)
 
-    tracking_altitude = limo_pos[1] + 1.0  # 1m above Limo
+    tracking_altitude = limo_pos[1] + 0.5  # 0.5m above Limo
 
     for k in range(N + 1):
         t = k * dt
