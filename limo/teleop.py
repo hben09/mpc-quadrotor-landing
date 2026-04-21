@@ -1,6 +1,11 @@
 """Keyboard teleoperation for a RASTIC LIMO.
 
-W/S = forward/back | A/D = turn left/right | Space = stop | Esc = quit
+W/S = forward/back | A/D = turn left/right | Space = stop
+C   = toggle circle mode   (fixed-radius loop)
+F   = toggle figure-8 mode (sinusoidal steering, same lobe size as circle)
+Esc = quit
+
+Any WASD or Space input cancels autonomous modes.
 """
 
 import argparse
@@ -18,20 +23,42 @@ from limo.registry import DEFAULT_LIMO, UDP_PORT, ip_for
 CONTROL_HZ = 50.0
 CONTROL_DT = 1.0 / CONTROL_HZ
 
+DEFAULT_CIRCLE_DIAMETER = 1.8   # metres
+DEFAULT_WHEELBASE = 0.20        # metres — LIMO Pro spec; tune if circles are off
+
 _keys: set = set()
 _keys_lock = Lock()
 _running = True
+_circle_on = False
+_figure8_on = False
+_figure8_t0 = 0.0
+_mode_lock = Lock()
 
 
 def _on_press(key):
-    global _running
+    global _running, _circle_on, _figure8_on, _figure8_t0
     if key == keyboard.Key.esc:
         _running = False
         return False
+    char = getattr(key, "char", None)
+    char = char.lower() if char else None
+    if char == "c":
+        with _mode_lock:
+            _circle_on = not _circle_on
+            if _circle_on:
+                _figure8_on = False
+        return
+    if char == "f":
+        with _mode_lock:
+            _figure8_on = not _figure8_on
+            if _figure8_on:
+                _circle_on = False
+                _figure8_t0 = time.time()
+        return
     with _keys_lock:
-        try:
-            _keys.add(key.char.lower())
-        except AttributeError:
+        if char is not None:
+            _keys.add(char)
+        else:
             _keys.add(key)
 
 
@@ -43,12 +70,43 @@ def _on_release(key):
             _keys.discard(key)
 
 
-def _compute_command() -> tuple[float, float]:
+def _compute_command(circle_diameter: float, wheelbase: float) -> tuple[float, float, str]:
+    """Return (linear_vel, steering, mode_label)."""
+    global _circle_on, _figure8_on
     with _keys_lock:
         keys = set(_keys)
 
+    manual_pressed = bool(keys & {"w", "s", "a", "d", keyboard.Key.space})
+
+    # Any manual input cancels autonomous modes.
+    if manual_pressed:
+        with _mode_lock:
+            _circle_on = False
+            _figure8_on = False
+
+    with _mode_lock:
+        circle_active = _circle_on
+        figure8_active = _figure8_on
+        f8_t0 = _figure8_t0
+
+    radius = circle_diameter / 2.0
+    # Ackermann bicycle model: δ = atan(L / R). Positive = CCW.
+    max_steer = math.atan(wheelbase / radius)
+
+    if circle_active:
+        return MAX_LINEAR_VEL, max_steer, "CIRCLE"
+
+    if figure8_active:
+        # Two tangent circles: CCW loop, then CW loop. Each loop takes one full
+        # circumference at max speed → T_loop = 2πR/v. Full figure-8 = 2×T_loop.
+        t_loop = 2.0 * math.pi * radius / MAX_LINEAR_VEL
+        t = time.time() - f8_t0
+        phase = (t % (2.0 * t_loop)) / t_loop   # 0.0–2.0
+        steering = max_steer if phase < 1.0 else -max_steer
+        return MAX_LINEAR_VEL, steering, "FIG-8"
+
     if keyboard.Key.space in keys:
-        return 0.0, 0.0
+        return 0.0, 0.0, "MANUAL"
 
     linear = 0.0
     steering = 0.0
@@ -60,7 +118,7 @@ def _compute_command() -> tuple[float, float]:
         steering += MAX_STEERING
     if "d" in keys:
         steering -= MAX_STEERING
-    return linear, steering
+    return linear, steering, "MANUAL"
 
 
 def main() -> None:
@@ -75,6 +133,10 @@ def main() -> None:
     parser.add_argument("--mqtt-topic", default=None,
                         help="MQTT pose topic. Default rb/limo<id>; "
                              "set to rb/landing when the landing platform is mounted.")
+    parser.add_argument("--circle-diameter", type=float, default=DEFAULT_CIRCLE_DIAMETER,
+                        help="Circle diameter (m) when circle mode is on (press C).")
+    parser.add_argument("--wheelbase", type=float, default=DEFAULT_WHEELBASE,
+                        help="LIMO wheelbase (m). Used for Ackermann circle geometry.")
     args = parser.parse_args()
 
     ip = args.ip if args.ip is not None else ip_for(args.limo)
@@ -84,7 +146,10 @@ def main() -> None:
     pose.connect()
 
     print(f"LIMO {args.limo} @ {ip}:{args.port}  |  pose topic: {topic}")
-    print("W/S = forward/back | A/D = turn | Space = stop | Esc = quit")
+    print(f"W/S = fwd/back | A/D = turn | Space = stop")
+    t_loop = 2.0 * math.pi * (args.circle_diameter / 2.0) / MAX_LINEAR_VEL
+    print(f"C = circle ({args.circle_diameter:.1f} m dia) | "
+          f"F = figure-8 ({2 * t_loop:.1f}s/cycle) | Esc = quit")
 
     listener = keyboard.Listener(on_press=_on_press, on_release=_on_release, suppress=True)
     listener.start()
@@ -92,7 +157,8 @@ def main() -> None:
     try:
         with LimoClient(ip, args.port) as robot:
             while _running:
-                linear, steering = _compute_command()
+                linear, steering, mode_str = _compute_command(
+                    args.circle_diameter, args.wheelbase)
                 robot.send_command(linear, steering)
 
                 snap = pose.latest()
@@ -105,7 +171,7 @@ def main() -> None:
                                 f"yaw={math.degrees(rb.yaw):+6.1f}deg age={age:4.2f}s")
 
                 sys.stdout.write(
-                    f"\rcmd v={linear:+.2f} s={steering:+.2f}  |  {pose_str}    "
+                    f"\r[{mode_str:7s}] v={linear:+.2f} s={steering:+.2f}  |  {pose_str}    "
                 )
                 sys.stdout.flush()
                 time.sleep(CONTROL_DT)
