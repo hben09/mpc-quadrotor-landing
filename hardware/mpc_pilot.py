@@ -80,7 +80,7 @@ RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
 TOUCHDOWN_MARGIN = 0.10  # meters above landing pad at which motors auto-cut
-TOUCHDOWN_RAMP_DURATION = 4.0  # seconds to linearly ramp thrust to 0 after touchdown
+TOUCHDOWN_RAMP_DURATION = 2.0  # seconds to linearly ramp thrust to 0 after touchdown
 
 # Pressed-key tracking for smooth target movement
 pressed_keys = set()
@@ -338,7 +338,7 @@ def main():
         cf.commander.send_setpoint(0, 0, 0, 0)
 
         # MPC
-        config = MPCConfig(dt=CONTROL_DT, horizon=25)
+        config = MPCConfig(dt=CONTROL_DT, horizon=50)
         mpc = MPCController(config)
         tuner = ParamTuner(config)
         N = config.horizon
