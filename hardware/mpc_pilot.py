@@ -81,7 +81,7 @@ TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
 RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
-TOUCHDOWN_MARGIN = 0.10  # meters above landing pad at which motors auto-cut
+TOUCHDOWN_MARGIN = 0.05  # meters above landing pad at which motors auto-cut
 TOUCHDOWN_RAMP_DURATION = 0.5  # seconds to linearly ramp thrust to 0 after touchdown
 
 # Pressed-key tracking for smooth target movement
