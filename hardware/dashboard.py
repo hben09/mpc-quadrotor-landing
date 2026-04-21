@@ -32,6 +32,7 @@ DRONE_TOPIC = "rb/crazyflie"
 LANDING_TOPIC = "rb/landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
+MPC_REF_TOPIC = "mpc/reference"
 BATTERY_TOPIC = "cf/battery"
 
 BATTERY_STATE_LABELS = {0: "OK", 1: "CHG", 2: "LOW", 3: "SHUT"}
@@ -52,6 +53,7 @@ class TrackedState:
         self._landing: MQTTRigidBody | None = None
         self._mpc_target: list[float] | None = None
         self._mpc_traj: list[list[float]] | None = None
+        self._mpc_ref: list[list[float]] | None = None
         self._battery: dict | None = None
 
     def set_drone(self, rb: MQTTRigidBody):
@@ -70,6 +72,10 @@ class TrackedState:
         with self._lock:
             self._mpc_traj = points
 
+    def set_mpc_ref(self, points: list[list[float]]):
+        with self._lock:
+            self._mpc_ref = points
+
     def set_battery(self, battery: dict):
         with self._lock:
             self._battery = battery
@@ -78,9 +84,13 @@ class TrackedState:
         with self._lock:
             return self._drone, self._landing
 
-    def get_mpc(self) -> tuple[list[float] | None, list[list[float]] | None]:
+    def get_mpc(
+        self,
+    ) -> tuple[
+        list[float] | None, list[list[float]] | None, list[list[float]] | None
+    ]:
         with self._lock:
-            return self._mpc_target, self._mpc_traj
+            return self._mpc_target, self._mpc_traj, self._mpc_ref
 
     def get_battery(self) -> dict | None:
         with self._lock:
@@ -178,6 +188,7 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
         client.subscribe(LANDING_TOPIC)
         client.subscribe(MPC_TARGET_TOPIC)
         client.subscribe(MPC_TRAJ_TOPIC)
+        client.subscribe(MPC_REF_TOPIC)
         client.subscribe(BATTERY_TOPIC)
         print(
             f"Subscribed to '{DRONE_TOPIC}', '{LANDING_TOPIC}', 'mpc/#', '{BATTERY_TOPIC}'"
@@ -197,6 +208,9 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
             elif msg.topic == MPC_TRAJ_TOPIC:
                 data = json.loads(msg.payload.decode())
                 state.set_mpc_traj(data["points"])
+            elif msg.topic == MPC_REF_TOPIC:
+                data = json.loads(msg.payload.decode())
+                state.set_mpc_ref(data["points"])
             elif msg.topic == BATTERY_TOPIC:
                 state.set_battery(json.loads(msg.payload.decode()))
         except Exception as e:
@@ -285,7 +299,7 @@ def main():
     # --- Timer callback (20 Hz) ---
     def update_callback(_step=None):
         drone, landing = state.get()
-        mpc_target, mpc_traj = state.get_mpc()
+        mpc_target, mpc_traj, mpc_ref = state.get_mpc()
 
         # Update drone
         if drone is not None:
@@ -332,6 +346,18 @@ def main():
             traj_pv = [mqtt_to_pyvista(p) for p in mpc_traj]
             traj_line = build_trail_mesh(traj_pv)
             plotter.add_mesh(traj_line, color="orange", line_width=3, name="mpc_traj")
+        if mpc_ref is not None and len(mpc_ref) >= 2:
+            ref_pv = [mqtt_to_pyvista(p) for p in mpc_ref]
+            ref_line = build_trail_mesh(ref_pv)
+            plotter.add_mesh(ref_line, color="magenta", line_width=2, name="mpc_ref")
+            ref_points = pv.PolyData(np.array(ref_pv))
+            plotter.add_mesh(
+                ref_points,
+                color="magenta",
+                render_points_as_spheres=True,
+                point_size=8,
+                name="mpc_ref_pts",
+            )
 
         # Update HUD
         mpc_line = "MPC: --"

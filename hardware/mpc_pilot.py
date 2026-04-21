@@ -74,6 +74,7 @@ TRACKED_OBJECT_TOPIC = "rb/landing"
 TRACKED_OBJECT_NAME = "landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
+MPC_REF_TOPIC = "mpc/reference"
 BATTERY_TOPIC = "cf/battery"
 
 TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
@@ -751,6 +752,13 @@ def main():
                                     pub.publish(
                                         MPC_TRAJ_TOPIC, json.dumps({"points": pts})
                                     )
+                                ref_pts = [
+                                    [float(r[0]), float(r[2]), float(r[4])]
+                                    for r in ref
+                                ]
+                                pub.publish(
+                                    MPC_REF_TOPIC, json.dumps({"points": ref_pts})
+                                )
 
                             elapsed = time.monotonic() - loop_start
                             sleep_time = CONTROL_DT - elapsed
