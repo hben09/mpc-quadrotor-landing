@@ -12,7 +12,7 @@ import numpy as np
 _CTRV_EPS = 1e-3  # rad/s — below this fall back to straight-line CV model
 
 APPROACH_CONE_HALF_ANGLE_DEG = 20.0
-APPROACH_CONE_BASE_RADIUS_M = 0.20
+APPROACH_CONE_BASE_RADIUS_M = 0.05
 
 
 def is_in_approach_cone(
