@@ -33,6 +33,7 @@ LANDING_TOPIC = "rb/landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
 MPC_REF_TOPIC = "mpc/reference"
+MPC_CONE_TOPIC = "mpc/cone"
 BATTERY_TOPIC = "cf/battery"
 
 BATTERY_STATE_LABELS = {0: "OK", 1: "CHG", 2: "LOW", 3: "SHUT"}
@@ -54,6 +55,7 @@ class TrackedState:
         self._mpc_target: list[float] | None = None
         self._mpc_traj: list[list[float]] | None = None
         self._mpc_ref: list[list[float]] | None = None
+        self._mpc_cone: dict | None = None
         self._battery: dict | None = None
 
     def set_drone(self, rb: MQTTRigidBody):
@@ -76,6 +78,10 @@ class TrackedState:
         with self._lock:
             self._mpc_ref = points
 
+    def set_mpc_cone(self, cone: dict | None):
+        with self._lock:
+            self._mpc_cone = cone
+
     def set_battery(self, battery: dict):
         with self._lock:
             self._battery = battery
@@ -87,10 +93,13 @@ class TrackedState:
     def get_mpc(
         self,
     ) -> tuple[
-        list[float] | None, list[list[float]] | None, list[list[float]] | None
+        list[float] | None,
+        list[list[float]] | None,
+        list[list[float]] | None,
+        dict | None,
     ]:
         with self._lock:
-            return self._mpc_target, self._mpc_traj, self._mpc_ref
+            return self._mpc_target, self._mpc_traj, self._mpc_ref, self._mpc_cone
 
     def get_battery(self) -> dict | None:
         with self._lock:
@@ -189,6 +198,7 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
         client.subscribe(MPC_TARGET_TOPIC)
         client.subscribe(MPC_TRAJ_TOPIC)
         client.subscribe(MPC_REF_TOPIC)
+        client.subscribe(MPC_CONE_TOPIC)
         client.subscribe(BATTERY_TOPIC)
         print(
             f"Subscribed to '{DRONE_TOPIC}', '{LANDING_TOPIC}', 'mpc/#', '{BATTERY_TOPIC}'"
@@ -211,6 +221,9 @@ def start_mqtt(state: TrackedState, broker: str, port: int):
             elif msg.topic == MPC_REF_TOPIC:
                 data = json.loads(msg.payload.decode())
                 state.set_mpc_ref(data["points"])
+            elif msg.topic == MPC_CONE_TOPIC:
+                data = json.loads(msg.payload.decode())
+                state.set_mpc_cone(data if data.get("apex") is not None else None)
             elif msg.topic == BATTERY_TOPIC:
                 state.set_battery(json.loads(msg.payload.decode()))
         except Exception as e:
@@ -299,7 +312,7 @@ def main():
     # --- Timer callback (20 Hz) ---
     def update_callback(_step=None):
         drone, landing = state.get()
-        mpc_target, mpc_traj, mpc_ref = state.get_mpc()
+        mpc_target, mpc_traj, mpc_ref, mpc_cone = state.get_mpc()
 
         # Update drone
         if drone is not None:
@@ -358,6 +371,59 @@ def main():
                 point_size=8,
                 name="mpc_ref_pts",
             )
+
+        # Landing approach frustum (20 cm landing disk at pad, opens upward)
+        if mpc_cone is not None:
+            apex_mqtt = mpc_cone["apex"]
+            max_height = float(mpc_cone["max_height"])
+            half_angle_deg = float(mpc_cone["half_angle_deg"])
+            base_radius = float(mpc_cone.get("base_radius", 0.0))
+            height = max(max_height - float(apex_mqtt[1]), 1e-3)
+            top_radius = base_radius + height * np.tan(np.radians(half_angle_deg))
+            apex_pv = mqtt_to_pyvista(apex_mqtt)
+            cone_color = "cyan" if mpc_cone.get("inside") else "orange"
+
+            n = 32
+            theta = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+            cos_t = np.cos(theta)
+            sin_t = np.sin(theta)
+            bottom_z = apex_pv[2]
+            top_z = apex_pv[2] + height
+            bottom_ring = np.column_stack(
+                [
+                    apex_pv[0] + base_radius * cos_t,
+                    apex_pv[1] + base_radius * sin_t,
+                    np.full(n, bottom_z),
+                ]
+            )
+            top_ring = np.column_stack(
+                [
+                    apex_pv[0] + top_radius * cos_t,
+                    apex_pv[1] + top_radius * sin_t,
+                    np.full(n, top_z),
+                ]
+            )
+            points = np.vstack([bottom_ring, top_ring])
+
+            lines: list[int] = []
+            for i in range(n):
+                lines.extend([2, i, (i + 1) % n])
+            for i in range(n):
+                lines.extend([2, n + i, n + ((i + 1) % n)])
+            for i in range(0, n, 4):
+                lines.extend([2, i, n + i])
+
+            frustum = pv.PolyData(points, lines=np.array(lines))
+            plotter.add_mesh(
+                frustum,
+                style="wireframe",
+                color=cone_color,
+                opacity=0.5,
+                line_width=1,
+                name="mpc_cone",
+            )
+        else:
+            plotter.remove_actor("mpc_cone", render=False)
 
         # Update HUD
         mpc_line = "MPC: --"

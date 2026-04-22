@@ -41,8 +41,12 @@ from cflib.utils import uri_helper
 import paho.mqtt.client as mqtt
 
 from mpc_landing import MPCController, MPCConfig
+from mpc_landing.boundary import ARENA_BOUNDS
 from mpc_landing.mqtt.parser import RigidBodyTracker
 from mpc_landing.reference import (
+    APPROACH_CONE_BASE_RADIUS_M,
+    APPROACH_CONE_HALF_ANGLE_DEG,
+    is_in_approach_cone,
     landing_reference,
     static_reference,
     tracking_reference,
@@ -75,6 +79,7 @@ TRACKED_OBJECT_NAME = "landing"
 MPC_TARGET_TOPIC = "mpc/target"
 MPC_TRAJ_TOPIC = "mpc/trajectory"
 MPC_REF_TOPIC = "mpc/reference"
+MPC_CONE_TOPIC = "mpc/cone"
 BATTERY_TOPIC = "cf/battery"
 
 TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
@@ -565,6 +570,8 @@ def main():
                             mpc = tuner.maybe_rebuild(mpc)
                             x0 = optitrack_to_mpc_state(drone)
 
+                            cone_payload = {"apex": None}
+
                             target_rb = reader.get_target()
                             if landing_enabled.is_set() and target_rb is not None:
                                 ref = landing_reference(
@@ -579,9 +586,24 @@ def main():
                                     float(ref[0, 4]),
                                 ]
                                 TARGET_YAW = target_rb.yaw
-                                mode = "L"
                                 pad_height = target_rb.pos[1] + 0.05
-                                if drone.pos[1] <= pad_height + TOUCHDOWN_MARGIN:
+                                inside_cone = is_in_approach_cone(
+                                    drone.pos,
+                                    (target_rb.pos[0], pad_height, target_rb.pos[2]),
+                                )
+                                mode = "L" if inside_cone else "L*"
+                                cone_payload = {
+                                    "apex": [
+                                        float(target_rb.pos[0]),
+                                        float(pad_height),
+                                        float(target_rb.pos[2]),
+                                    ],
+                                    "half_angle_deg": float(APPROACH_CONE_HALF_ANGLE_DEG),
+                                    "base_radius": float(APPROACH_CONE_BASE_RADIUS_M),
+                                    "max_height": float(ARENA_BOUNDS["y_max"]),
+                                    "inside": bool(inside_cone),
+                                }
+                                if drone.pos[1] <= pad_height + TOUCHDOWN_MARGIN and inside_cone:
                                     events.log(
                                         time.monotonic() - t0,
                                         "touchdown",
@@ -760,6 +782,9 @@ def main():
                                 ]
                                 pub.publish(
                                     MPC_REF_TOPIC, json.dumps({"points": ref_pts})
+                                )
+                                pub.publish(
+                                    MPC_CONE_TOPIC, json.dumps(cone_payload)
                                 )
 
                             elapsed = time.monotonic() - loop_start

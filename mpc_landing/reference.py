@@ -11,6 +11,28 @@ import numpy as np
 
 _CTRV_EPS = 1e-3  # rad/s — below this fall back to straight-line CV model
 
+APPROACH_CONE_HALF_ANGLE_DEG = 20.0
+APPROACH_CONE_BASE_RADIUS_M = 0.20
+
+
+def is_in_approach_cone(
+    drone_pos,
+    pad_pos,
+    half_angle_deg=APPROACH_CONE_HALF_ANGLE_DEG,
+    base_radius=APPROACH_CONE_BASE_RADIUS_M,
+):
+    """Frustum membership test for the landing approach.
+
+    Frustum is a truncated cone with a `base_radius` landing disk at `pad_pos`,
+    opening upward along OptiTrack +Y at `half_angle_deg`. Drone is inside iff
+    its horizontal offset (XZ plane) is within
+    `base_radius + altitude_above_pad * tan(half_angle)`.
+    """
+    altitude_above_pad = max(drone_pos[1] - pad_pos[1], 0.0)
+    cone_radius = base_radius + altitude_above_pad * np.tan(np.radians(half_angle_deg))
+    horizontal_offset = np.hypot(drone_pos[0] - pad_pos[0], drone_pos[2] - pad_pos[2])
+    return bool(horizontal_offset <= cone_radius)
+
 
 def _ctrv_predict(pos_x, pos_z, vx, vz, w, t):
     """Closed-form CTRV prediction in the OptiTrack xz plane (+Y up, CCW yaw).
@@ -71,11 +93,22 @@ def tracking_reference(drone_state, limo_state, N, dt):
     return ref
 
 
-def landing_reference(drone_state, limo_state, N, dt, descent_rate=0.3):
+def landing_reference(
+    drone_state,
+    limo_state,
+    N,
+    dt,
+    descent_rate=0.3,
+    cone_half_angle_deg=APPROACH_CONE_HALF_ANGLE_DEG,
+):
     """Phase 2: Descend onto the Limo while tracking its xy position.
 
-    Same xy tracking as Phase 1, but altitude reference linearly descends
-    from current drone height down to the Limo roof.
+    Same xy tracking as Phase 1. Altitude behavior depends on the landing
+    approach cone (apex at the pad, opening upward with `cone_half_angle_deg`):
+    - Inside the cone: altitude descends linearly at `descent_rate` down to
+      the pad.
+    - Outside the cone: altitude is held at the drone's current height so the
+      MPC closes the lateral gap before committing to descent.
 
     Args:
         drone_state: dict with 'pos' [x, y, z] and 'vel' [vx, vy, vz]
@@ -83,6 +116,7 @@ def landing_reference(drone_state, limo_state, N, dt, descent_rate=0.3):
         N: prediction horizon
         dt: timestep (s)
         descent_rate: how fast to descend (m/s)
+        cone_half_angle_deg: half-angle of the approach cone (degrees)
 
     Returns:
         ref: np.array of shape (N+1, 6)
@@ -95,6 +129,8 @@ def landing_reference(drone_state, limo_state, N, dt, descent_rate=0.3):
     w = limo_state.get("yaw_rate", 0.0)
 
     landing_height = limo_pos[1] + 0.05
+    pad_pos = (limo_pos[0], landing_height, limo_pos[2])
+    inside_cone = is_in_approach_cone(drone_pos, pad_pos, cone_half_angle_deg)
 
     for k in range(N + 1):
         t = k * dt
@@ -106,9 +142,13 @@ def landing_reference(drone_state, limo_state, N, dt, descent_rate=0.3):
         ref[k, 4] = pz
         ref[k, 5] = vz_t
 
-        desired_alt = drone_pos[1] - descent_rate * t
-        ref[k, 2] = max(desired_alt, landing_height)
-        ref[k, 3] = -descent_rate if desired_alt > landing_height else 0.0
+        if inside_cone:
+            desired_alt = drone_pos[1] - descent_rate * t
+            ref[k, 2] = max(desired_alt, landing_height)
+            ref[k, 3] = -descent_rate if desired_alt > landing_height else 0.0
+        else:
+            ref[k, 2] = drone_pos[1]
+            ref[k, 3] = 0.0
 
     return ref
 
