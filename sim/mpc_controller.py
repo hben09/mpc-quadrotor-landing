@@ -39,7 +39,7 @@ from crazyflow.sim.integration import Integrator
 from crazyflow.sim.visualize import draw_points
 
 from mpc_landing import MPCController, MPCConfig
-from mpc_landing.reference import static_reference, tracking_reference, landing_reference
+from mpc_landing.guidance import static_reference, tracking_reference, landing_reference
 
 
 # ---------------------------------------------------------------------------

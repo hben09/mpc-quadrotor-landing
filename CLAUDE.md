@@ -9,7 +9,7 @@ MPC-based autonomous quadrotor landing system. A Crazyflie drone is controlled f
 ```
 mpc_landing/            # Core control library (workspace member, importable package)
   mpc.py                # Offset-free MPC controller (CVXPY/OSQP, 3D double integrator + vertical disturbance state)
-  reference.py          # Reference trajectory generation (tracking, landing, static)
+  guidance.py           # Reference trajectory generation (tracking, landing, static)
   boundary.py           # RASTIC arena boundary safety checker
   supervisor.py         # SafeCommander — boundary safety supervisor wrapping cf.commander
   yaw_controller.py     # P yaw controller (OptiTrack CCW+ → cflib CW+ sign flip, deg/s output)
@@ -17,7 +17,7 @@ mpc_landing/            # Core control library (workspace member, importable pac
     parser.py           # Reusable parser: JSON → MQTTRigidBody dataclass with velocity
     sub.py              # MQTT subscriber for drone (crazyflie) and landing target (rb/landing) poses
 
-sim/                    # Crazyflow simulation environment (workspace member)
+sim/                    # ⚠ OUTDATED — Crazyflow simulation environment (workspace member); not kept in sync with mpc_landing/ or hardware/ changes
   mpc_controller.py     # Closed-loop MPC simulation (hover + tracking + landing)
   mpc_controller_ground.py  # MPC with physics-based ground vehicle
   mpc_gui.py            # PyVista GUI — drag target sphere, shows MPC plan + arena bounds
@@ -45,14 +45,16 @@ All scripts are runnable via `uv run <command>`:
 - `hw-teleop` — manual attitude flight with physical Crazyflie
 - `mpc-pilot` — MPC position flight (physical Crazyflie); manual WASD/QE by default, with **T** to toggle tracking and **L** to toggle autonomous descent on `rb/landing`
 - `dashboard` — real-time 3D drone position viewer (OptiTrack via MQTT)
-- `sim-mpc` — MPC simulation with virtual target
-- `sim-mpc-ground` — MPC simulation with physics-based ground vehicle
-- `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere)
-- `sim-teleop` — manual flight in Crazyflow simulator
+- `sim-mpc` — MPC simulation with virtual target ⚠ *outdated*
+- `sim-mpc-ground` — MPC simulation with physics-based ground vehicle ⚠ *outdated*
+- `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere) ⚠ *outdated*
+- `sim-teleop` — manual flight in Crazyflow simulator ⚠ *outdated*
 - `limo-teleop` — keyboard teleop + autonomous patterns for the LIMO ground robot (requires `limo_server.py` running on the robot)
 
 The sim landing variant has no console-script alias — invoke it directly:
-- `uv run python sim/simu_mpc_teleop_landing.py` — same flow as `mpc-pilot`, in Crazyflow sim
+- `uv run python sim/simu_mpc_teleop_landing.py` — same flow as `mpc-pilot`, in Crazyflow sim ⚠ *outdated*
+
+> ⚠ **`sim/` is outdated.** The simulation scripts have not been kept in sync with recent changes in `mpc_landing/` (e.g. `reference.py` → `guidance.py` rename, cone-gated landing, CTRV tracking reference). They may import removed symbols or miss current MPC behavior. Treat as reference only; hardware flows via `mpc-pilot` are the source of truth.
 
 ## Architecture
 
@@ -80,7 +82,7 @@ Currently used in `hardware/teleop.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
-- Hardware MPC position flight via `hardware/mpc_pilot.py` (manually-piloted setpoint by default, yaw-compensated accel→attitude mapping), with autonomous tracking + landing on `rb/landing` via the same script (and `sim/simu_mpc_teleop_landing.py` in sim), using `tracking_reference()` (0.5 m above the LIMO, CTRV prediction of its xz trajectory) + `landing_reference()` (0.3 m/s descent inside the approach cone, lateral-close-in hold outside) from `mpc_landing/reference.py`. **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.05 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
+- Hardware MPC position flight via `hardware/mpc_pilot.py` (manually-piloted setpoint by default, yaw-compensated accel→attitude mapping), with autonomous tracking + landing on `rb/landing` via the same script (and `sim/simu_mpc_teleop_landing.py` in sim), using `tracking_reference()` (0.5 m above the LIMO, CTRV prediction of its xz trajectory) + `landing_reference()` (0.3 m/s descent inside the approach cone, lateral-close-in hold outside) from `mpc_landing/guidance.py`. **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.05 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
 - Yaw P-controller in `mpc_landing/yaw_controller.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
 - MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 50 steps (1.0s)

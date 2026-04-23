@@ -1,7 +1,7 @@
 """MPC-based autonomous quadrotor landing system."""
 
 from mpc_landing.mpc import MPCController, MPCConfig
-from mpc_landing.reference import (
+from mpc_landing.guidance import (
     APPROACH_CONE_BASE_RADIUS_M,
     APPROACH_CONE_HALF_ANGLE_DEG,
     is_in_approach_cone,
