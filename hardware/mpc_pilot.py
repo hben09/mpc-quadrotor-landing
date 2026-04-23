@@ -586,7 +586,7 @@ def main():
                                     float(ref[0, 4]),
                                 ]
                                 TARGET_YAW = target_rb.yaw
-                                pad_height = target_rb.pos[1] + 0.05
+                                pad_height = target_rb.pos[1]
                                 inside_cone = is_in_approach_cone(
                                     drone.pos,
                                     (target_rb.pos[0], pad_height, target_rb.pos[2]),
