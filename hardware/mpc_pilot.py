@@ -736,6 +736,13 @@ def main():
                                 pos_error=pos_error,
                                 vel_error=vel_error,
                                 yaw_error=yaw_error,
+                                target_vel=(
+                                    float(ref[0, 1]),
+                                    float(ref[0, 3]),
+                                    float(ref[0, 5]),
+                                ),
+                                pad_pos=tuple(target_rb.pos) if target_rb is not None else None,
+                                pad_vel=tuple(target_rb.vel) if target_rb is not None else None,
                             )
 
                             if mpc.last_status not in ("optimal", "optimal_inaccurate"):

@@ -48,6 +48,15 @@ _COLUMNS = [
     "e_vy",
     "e_vz",
     "e_yaw",
+    "tvx",
+    "tvy",
+    "tvz",
+    "pad_x",
+    "pad_y",
+    "pad_z",
+    "pad_vx",
+    "pad_vy",
+    "pad_vz",
 ]
 
 
@@ -99,6 +108,9 @@ class TeleopLogger:
         pos_error,
         vel_error,
         yaw_error,
+        target_vel,
+        pad_pos=None,
+        pad_vel=None,
     ):
         roll, pitch, thrust = setpoint
         row = [
@@ -140,6 +152,15 @@ class TeleopLogger:
             f"{vel_error[1]:.4f}",
             f"{vel_error[2]:.4f}",
             f"{yaw_error:.4f}",
+            f"{target_vel[0]:.4f}",
+            f"{target_vel[1]:.4f}",
+            f"{target_vel[2]:.4f}",
+            "" if pad_pos is None else f"{pad_pos[0]:.4f}",
+            "" if pad_pos is None else f"{pad_pos[1]:.4f}",
+            "" if pad_pos is None else f"{pad_pos[2]:.4f}",
+            "" if pad_vel is None else f"{pad_vel[0]:.4f}",
+            "" if pad_vel is None else f"{pad_vel[1]:.4f}",
+            "" if pad_vel is None else f"{pad_vel[2]:.4f}",
         ]
         if self._include_mode:
             row.append(mode if mode is not None else "")

@@ -76,6 +76,52 @@ Currently used in `hardware/teleop.py`.
 - Manual attitude teleoperation still available via `hardware/teleop.py`
 - MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
 
+## Logging
+
+`hardware/csv_logger.py` defines three loggers used together in `hardware/mpc_pilot.py`. Each flight writes a timestamped directory containing `teleop.csv`, `infeasible.jsonl`, and `events.jsonl`.
+
+### `teleop.csv` — per-tick row at the control-loop rate
+
+| Column | Meaning |
+|---|---|
+| `t` | Seconds since takeoff (`time.monotonic()`) |
+| `px, py, pz` | Drone position from OptiTrack `rb/crazyflie` (m) |
+| `vx, vy, vz` | Drone velocity from `RigidBodyTracker` finite-diff (m/s) |
+| `tx, ty, tz` | MPC reference position, first step — `ref[0, 0/2/4]` (m) |
+| `ax, ay, az` | MPC commanded acceleration `u_opt[0]` (m/s²) |
+| `roll, pitch` | Attitude setpoint sent to cflib (degrees) |
+| `thrust` | Thrust setpoint sent to cflib (PWM, 0–65535) |
+| `d_hat` | Offset-free MPC vertical disturbance estimate (m/s²) |
+| `yaw, target_yaw` | Actual and desired heading from `MQTTRigidBody.yaw` (rad) |
+| `yawrate` | Yaw-rate command sent to cflib (deg/s, P-controller output) |
+| `Qp, Qv, Qf, R` | Representative MPC tuning diagonals — `Q_diag[0]`, `Q_diag[1]`, `Qf_diag[0]`, `R_diag[0]` |
+| `a_max, v_max` | MPC accel / velocity bounds (m/s², m/s) |
+| `mpc_status` | CVXPY solver status (`optimal`, `optimal_inaccurate`, `infeasible`, …) |
+| `solve_time_ms` | MPC solve duration |
+| `loop_dt_ms` | Actual control-loop period (for loop-rate diagnostics) |
+| `a_cmd_norm` | L2 norm of `u_opt[0]` |
+| `vbat` | Battery voltage from cflib (V; empty before first sample) |
+| `e_px, e_py, e_pz` | Position tracking error (reference − state, m) |
+| `e_vx, e_vy, e_vz` | Velocity tracking error (m/s) |
+| `e_yaw` | Yaw error wrapped to ±π (rad) |
+| `tvx, tvy, tvz` | MPC reference velocity, first step — `ref[0, 1/3/5]` (m/s) |
+| `pad_x, pad_y, pad_z` | Landing pad position from `rb/landing` (m; empty when pad not visible) |
+| `pad_vx, pad_vy, pad_vz` | Pad velocity from `RigidBodyTracker` finite-diff (m/s; empty when pad not visible) |
+| `mode` | Flight mode: `"M"` manual, `"T"` tracking, `"L"` landing inside approach cone, `"L*"` landing outside cone |
+
+### `infeasible.jsonl` — one JSON line per non-optimal MPC solve
+Fields: `t`, `status`, `d_hat`, `x0` (7-state augmented initial condition), `ref` (full horizon, shape `(N+1, 6)`), and a `config` snapshot (`dt`, `horizon`, `Q_diag`, `Qf_diag`, `R_diag`, `a_max`, `v_max`).
+
+### `events.jsonl` — one JSON line per discrete event
+Schema: `{t, kind, **fields}`. Emitted kinds:
+- `mode_change` — `from_mode`, `to_mode`
+- `touchdown` — `y`, `pad_y`, `ramp_duration_s`, `start_thrust`
+- `motors_off` — `y`
+- `lost_pose` — `prev_mode`, `topic` (fires when `rb/landing` drops out during T or L)
+
+### Related telemetry (not a file logger)
+`hardware/battery.py` runs a cflib `LogConfig` at 500 ms that reads `pm.vbat`, `pm.batteryLevel`, `pm.state` and republishes them on MQTT topic `cf/battery`.
+
 ## Dependencies
 
 - **mpc_landing**: numpy, cvxpy, scipy, paho-mqtt, pyserial
