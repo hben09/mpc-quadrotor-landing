@@ -26,9 +26,17 @@ sim/                    # Crazyflow simulation environment (workspace member)
 
 hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput) — keep barebones
-  mpc_pilot.py          # MPC position flight (manual WASD/QE + runtime tuning + CSV logging) with autonomous tracking (T, 1 m hold) and descent (L, auto-cutoff) onto rb/landing
+  mpc_pilot.py          # MPC position flight (manual WASD/QE + runtime tuning + CSV logging) with autonomous tracking (T, 0.5 m above LIMO) and descent (L, auto-cutoff) onto rb/landing
+  csv_logger.py         # TeleopLogger / InfeasibilityLogger / EventLogger — per-flight teleop.csv + infeasible.jsonl + events.jsonl
   battery.py            # BatteryPublisher — cflib pm.* LogConfig → MQTT topic cf/battery
   dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
+
+limo/                   # AgileX LIMO ground-robot control (workspace member) — the moving platform the drone tracks/lands on
+  server.py             # UDP motion-command server — runs ON the LIMO (port 12346, 1s staleness window)
+  client.py             # UDP client wrapper — runs on the PC
+  pose.py               # MQTT subscriber for rb/limoXXX pose from OptiTrack
+  registry.py           # LIMO ID → IP mapping
+  teleop.py             # Keyboard teleop + autonomous patterns (circle, figure-8)
 ```
 
 ### Entry Points
@@ -41,6 +49,7 @@ All scripts are runnable via `uv run <command>`:
 - `sim-mpc-ground` — MPC simulation with physics-based ground vehicle
 - `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere)
 - `sim-teleop` — manual flight in Crazyflow simulator
+- `limo-teleop` — keyboard teleop + autonomous patterns for the LIMO ground robot (requires `limo_server.py` running on the robot)
 
 The sim landing variant has no console-script alias — invoke it directly:
 - `uv run python sim/simu_mpc_teleop_landing.py` — same flow as `mpc-pilot`, in Crazyflow sim
@@ -71,10 +80,10 @@ Currently used in `hardware/teleop.py`.
 
 ### Current State
 - MPC controller implemented in `mpc_landing/mpc.py`, tested in simulation via `sim/mpc_controller.py`
-- Hardware MPC position flight via `hardware/mpc_pilot.py` (manually-piloted setpoint by default, yaw-compensated accel→attitude mapping), with autonomous tracking + landing on `rb/landing` via the same script (and `sim/simu_mpc_teleop_landing.py` in sim), using `tracking_reference()` (1 m altitude hold) + `landing_reference()` (0.3 m/s descent) from `mpc_landing/reference.py`. **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.10 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
+- Hardware MPC position flight via `hardware/mpc_pilot.py` (manually-piloted setpoint by default, yaw-compensated accel→attitude mapping), with autonomous tracking + landing on `rb/landing` via the same script (and `sim/simu_mpc_teleop_landing.py` in sim), using `tracking_reference()` (0.5 m above the LIMO, CTRV prediction of its xz trajectory) + `landing_reference()` (0.3 m/s descent inside the approach cone, lateral-close-in hold outside) from `mpc_landing/reference.py`. **T** toggles tracking and **L** toggles descent; motors auto-cut when within `TOUCHDOWN_MARGIN = 0.05 m` of the pad. Exiting tracking/landing back to manual pins the manual target to the current MPC reference so the drone doesn't snap back to the prior setpoint.
 - Yaw P-controller in `mpc_landing/yaw_controller.py` runs alongside position MPC (decoupled world-frame axis)
 - Manual attitude teleoperation still available via `hardware/teleop.py`
-- MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 25 steps (0.5s)
+- MPC state: [px, vx, py, vy, pz, vz, d] (7D — d is vertical disturbance for offset-free tracking), control: [ax, ay, az], horizon: 50 steps (1.0s)
 
 ## Logging
 
@@ -114,6 +123,10 @@ Fields: `t`, `status`, `d_hat`, `x0` (7-state augmented initial condition), `ref
 
 ### `events.jsonl` — one JSON line per discrete event
 Schema: `{t, kind, **fields}`. Emitted kinds:
+- `ready_for_takeoff` — `target` (TARGET pinned to current pose; fires after a landing while waiting for SPACE to take off again)
+- `takeoff_start` — `hover_pwm`, `duration_s` (start of the thrust ramp)
+- `takeoff_complete` — `y` (altitude at end of ramp)
+- `boundary_violated` — `phase` (`"takeoff"` or `"mpc"`), `pos` (during MPC phase); SafeCommander tripped and disarmed
 - `mode_change` — `from_mode`, `to_mode`
 - `touchdown` — `y`, `pad_y`, `ramp_duration_s`, `start_thrust`
 - `motors_off` — `y`
