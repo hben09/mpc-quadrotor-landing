@@ -9,4 +9,4 @@ log/
 .venv/
 .codex
 cache/
-hardware/logs/
+logs/

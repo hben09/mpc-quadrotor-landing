@@ -1,6 +1,6 @@
 """Flight-log plotter for MPC report figures.
 
-Reads one hardware/logs/teleop_YYYYMMDD_HHMMSS/ directory and emits vector
+Reads one logs/teleop_YYYYMMDD_HHMMSS/ directory and emits vector
 PDFs into a ``plots/`` sub-directory, plus a summary.txt with headline
 numbers.
 
@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 
-HARDWARE_LOGS = Path(__file__).resolve().parent / "logs"
+LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
 
 _EVENT_KINDS = {
     "takeoff_complete",
@@ -43,9 +43,9 @@ def resolve_log_dir(arg: str | None) -> Path:
         if not p.is_dir():
             sys.exit(f"error: log directory not found: {p}")
         return p
-    candidates = sorted(HARDWARE_LOGS.glob("teleop_*"), key=lambda p: p.stat().st_mtime)
+    candidates = sorted(LOGS_DIR.glob("teleop_*"), key=lambda p: p.stat().st_mtime)
     if not candidates:
-        sys.exit(f"error: no teleop_* directories under {HARDWARE_LOGS}")
+        sys.exit(f"error: no teleop_* directories under {LOGS_DIR}")
     return candidates[-1]
 
 
@@ -422,7 +422,7 @@ def main() -> None:
     ap.add_argument(
         "log_dir",
         nargs="?",
-        help="path to a hardware/logs/teleop_* directory (default: most recent)",
+        help="path to a logs/teleop_* directory (default: most recent)",
     )
     args = ap.parse_args()
 

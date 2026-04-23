@@ -484,7 +484,7 @@ def main():
         with SafeCommander(cf.commander) as commander:
             try:
                 flight_dir = (
-                    Path(__file__).resolve().parent
+                    Path(__file__).resolve().parent.parent
                     / "logs"
                     / f"teleop_{datetime.now():%Y%m%d_%H%M%S}"
                 )

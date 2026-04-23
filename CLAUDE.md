@@ -28,6 +28,7 @@ hardware/               # Crazyflie hardware control scripts (workspace member)
   teleop.py             # Keyboard teleoperation via cflib (attitude control, 50Hz, pynput) — keep barebones
   mpc_pilot.py          # MPC position flight (manual WASD/QE + runtime tuning + CSV logging) with autonomous tracking (T, 0.5 m above LIMO) and descent (L, auto-cutoff) onto rb/landing
   csv_logger.py         # TeleopLogger / InfeasibilityLogger / EventLogger — per-flight teleop.csv + infeasible.jsonl + events.jsonl
+  plot_flight.py        # Flight-log plotter — reads logs/teleop_*/ → PDF figures + summary.txt
   battery.py            # BatteryPublisher — cflib pm.* LogConfig → MQTT topic cf/battery
   dashboard.py          # Real-time 3D drone position viewer via MQTT/OptiTrack (PyVista)
 
@@ -45,6 +46,7 @@ All scripts are runnable via `uv run <command>`:
 - `hw-teleop` — manual attitude flight with physical Crazyflie
 - `mpc-pilot` — MPC position flight (physical Crazyflie); manual WASD/QE by default, with **T** to toggle tracking and **L** to toggle autonomous descent on `rb/landing`
 - `dashboard` — real-time 3D drone position viewer (OptiTrack via MQTT)
+- `plot-flight` — generate PDF figures + `summary.txt` from a flight log (default: most recent under `logs/`)
 - `sim-mpc` — MPC simulation with virtual target ⚠ *outdated*
 - `sim-mpc-ground` — MPC simulation with physics-based ground vehicle ⚠ *outdated*
 - `sim-mpc-gui` — interactive PyVista GUI for sim MPC (drag target sphere) ⚠ *outdated*
@@ -89,7 +91,7 @@ Currently used in `hardware/teleop.py`.
 
 ## Logging
 
-`hardware/csv_logger.py` defines three loggers used together in `hardware/mpc_pilot.py`. Each flight writes a timestamped directory containing `teleop.csv`, `infeasible.jsonl`, and `events.jsonl`.
+`hardware/csv_logger.py` defines three loggers used together in `hardware/mpc_pilot.py`. Each flight writes a timestamped directory at `logs/teleop_YYYYMMDD_HHMMSS/` (repo root, gitignored) containing `teleop.csv`, `infeasible.jsonl`, and `events.jsonl`. Run `uv run plot-flight` to regenerate PDF figures + `summary.txt` into a `plots/` sub-directory of the most recent flight.
 
 ### `teleop.csv` — per-tick row at the control-loop rate
 
