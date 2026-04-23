@@ -156,7 +156,7 @@ class MPCController:
             # Prediction error on vy (index 3) — most responsive to thrust bias
             vy_error = x0[3] - self._x_pred[3]
             # Low-pass update: d_hat += alpha * (error / dt)
-            self._d_hat += 0.3 * (vy_error / self.cfg.dt)
+            self._d_hat += 0.2 * (vy_error / self.cfg.dt)
 
         # Augment state with disturbance estimate
         x0_aug = np.append(x0, self._d_hat)
