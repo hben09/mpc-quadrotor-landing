@@ -5,6 +5,7 @@ description = "Crazyflie hardware control scripts"
 requires-python = ">=3.13"
 dependencies = [
     "cflib",
+    "matplotlib",
     "mpc-landing",
     "paho-mqtt",
     "pynput",
@@ -13,12 +14,13 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["teleop", "dashboard", "mpc_pilot", "csv_logger", "battery"]
+py-modules = ["teleop", "dashboard", "mpc_pilot", "csv_logger", "battery", "plot_flight"]
 
 [project.scripts]
 hw-teleop = "teleop:main"
 dashboard = "dashboard:main"
 mpc-pilot = "mpc_pilot:main"
+plot-flight = "plot_flight:main"
 
 [tool.uv.sources]
 mpc-landing = { workspace = true }

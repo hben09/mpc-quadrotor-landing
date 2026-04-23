@@ -1019,6 +1019,7 @@ version = "0.1.0"
 source = { editable = "hardware" }
 dependencies = [
     { name = "cflib" },
+    { name = "matplotlib" },
     { name = "mpc-landing" },
     { name = "paho-mqtt" },
     { name = "pynput" },
@@ -1029,6 +1030,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "cflib" },
+    { name = "matplotlib" },
     { name = "mpc-landing", editable = "mpc_landing" },
     { name = "paho-mqtt" },
     { name = "pynput" },
