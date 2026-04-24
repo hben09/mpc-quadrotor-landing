@@ -132,40 +132,61 @@ def _save(fig, path: Path) -> None:
 
 def plot_position_tracking(csv_data: dict, events: list, out: Path) -> None:
     t = csv_data["t"]
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 7.5))
-    panels = [
-        ("X position — forward (m)", "px", "tx", "pad_x"),
-        ("Y position — up (m)", "py", "ty", "pad_y"),
-        ("Z position — right (m)", "pz", "tz", "pad_z"),
+    fig, axes = plt.subplots(2, 3, figsize=(15, 6))
+
+    pos_panels = [
+        ("x-Position (m)", "tx", "px", "pad_x"),
+        ("y-Position (m)", "ty", "py", "pad_y"),
+        ("z-Position (m)", "tz", "pz", "pad_z"),
     ]
-    for ax, (ylab, pcol, tcol, pad_col) in zip(axes, panels):
-        ax.plot(t, csv_data[pcol], label="Drone mocap position", color="C0", linewidth=1.3)
-        ax.plot(
-            t,
-            csv_data[tcol],
-            label="Drone desired position",
-            color="C1",
-            linewidth=1.2,
-            linestyle="--",
-        )
-        ax.plot(
-            t,
-            csv_data[pad_col],
-            label="Landing pad mocap position",
-            color="C2",
-            linewidth=1.0,
-            alpha=0.9,
-        )
-        ax.set_ylabel(ylab)
-        _draw_event_lines(ax, events)
-        _style(ax)
-    axes[0].legend(loc="upper right", fontsize=8)
-    axes[-1].set_xlabel("Time since takeoff (s)")
-    axes[0].set_title(
-        "Drone position tracking",
-        pad=24,
+    vel_panels = [
+        ("x-Velocity (m/s)", "tvx", "vx", "pad_vx"),
+        ("y-Velocity (m/s)", "tvy", "vy", "pad_vy"),
+        ("z-Velocity (m/s)", "tvz", "vz", "pad_vz"),
+    ]
+
+    def _draw_row(row_axes, panels):
+        for ax, (ylab, desired_col, actual_col, pad_col) in zip(row_axes, panels):
+            ax.plot(
+                t,
+                csv_data[desired_col],
+                color="C0",
+                linewidth=1.3,
+                label="Quadrotor Desired",
+            )
+            ax.plot(
+                t,
+                csv_data[actual_col],
+                color="C1",
+                linewidth=1.3,
+                label="Quadrotor Ground Truth",
+            )
+            ax.plot(
+                t,
+                csv_data[pad_col],
+                color="C4",
+                linewidth=1.3,
+                label="Platform Ground Truth",
+            )
+            ax.set_ylabel(ylab)
+            ax.set_xlabel("Time (s)")
+            _draw_event_lines(ax, events)
+            _style(ax)
+
+    _draw_row(axes[0], pos_panels)
+    _draw_row(axes[1], vel_panels)
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=len(labels),
+        bbox_to_anchor=(0.5, 1.0),
+        frameon=False,
+        fontsize=10,
     )
-    _annotate_event_labels(axes[0], events)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     _save(fig, out / "01_position_tracking.pdf")
 
 
@@ -176,30 +197,67 @@ def plot_control_output(csv_data: dict, events: list, out: Path) -> None:
         if "a_max" in csv_data and not np.all(np.isnan(csv_data["a_max"]))
         else None
     )
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 6.5))
-    panels = [
-        ("X acceleration — forward (m/s²)", "ax"),
-        ("Y acceleration — up (m/s²)", "ay"),
-        ("Z acceleration — right (m/s²)", "az"),
+    fig, axes = plt.subplots(2, 3, figsize=(15, 7))
+
+    accel_panels = [
+        ("x-Acceleration (m/s²)", "ax", (-5, 5)),
+        ("y-Acceleration (m/s²)", "ay", (0, 15)),
+        ("z-Acceleration (m/s²)", "az", (-5, 5)),
     ]
-    for ax, (ylab, col) in zip(axes, panels):
-        ax.plot(t, csv_data[col], color="C3", linewidth=1.0, label="MPC command")
+    for ax, (ylab, col, ylim) in zip(axes[0], accel_panels):
+        ax.plot(t, csv_data[col], color="C3", linewidth=1.3, label="MPC Command")
         if a_max is not None:
             ax.axhline(
                 a_max,
                 color="0.5",
                 linestyle=":",
                 linewidth=0.8,
-                label=f"Acceleration limit (±{a_max:.1f} m/s²)",
+                label=f"Acceleration Limit (±{a_max:.1f} m/s²)",
             )
             ax.axhline(-a_max, color="0.5", linestyle=":", linewidth=0.8)
         ax.set_ylabel(ylab)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylim(ylim)
         _draw_event_lines(ax, events)
         _style(ax)
-    axes[0].legend(loc="upper right", fontsize=8)
-    axes[-1].set_xlabel("Time since takeoff (s)")
-    axes[0].set_title("MPC commanded acceleration")
-    _save(fig, out / "02_mpc_control_output.pdf")
+
+    actuator_panels = [
+        ("Roll Command (deg)", "roll", 15, "Tilt Limit (±15°)", True),
+        ("Pitch Command (deg)", "pitch", 15, None, True),
+        ("Thrust Command (PWM)", "thrust", 65535, "PWM Maximum (65535)", False),
+    ]
+    for ax, (ylab, col, limit_val, limit_label, symmetric) in zip(
+        axes[1], actuator_panels
+    ):
+        ax.plot(t, csv_data[col], color="C0", linewidth=1.3, label="Actuator Command")
+        if limit_label is not None:
+            ax.axhline(
+                limit_val, color="0.5", linestyle=":", linewidth=0.8, label=limit_label
+            )
+        else:
+            ax.axhline(limit_val, color="0.5", linestyle=":", linewidth=0.8)
+        if symmetric:
+            ax.axhline(-limit_val, color="0.5", linestyle=":", linewidth=0.8)
+        ax.set_ylabel(ylab)
+        ax.set_xlabel("Time (s)")
+        _draw_event_lines(ax, events)
+        _style(ax)
+
+    handles_labels: dict[str, object] = {}
+    for ax in axes.flat:
+        for handle, label in zip(*ax.get_legend_handles_labels()):
+            handles_labels.setdefault(label, handle)
+    fig.legend(
+        handles_labels.values(),
+        handles_labels.keys(),
+        loc="upper center",
+        ncol=len(handles_labels),
+        bbox_to_anchor=(0.5, 1.0),
+        frameon=False,
+        fontsize=10,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    _save(fig, out / "02_commands.pdf")
 
 
 def plot_disturbance(csv_data: dict, events: list, out: Path) -> None:
@@ -214,186 +272,66 @@ def plot_disturbance(csv_data: dict, events: list, out: Path) -> None:
     _save(fig, out / "03_disturbance_estimate.pdf")
 
 
-def plot_predicted_horizon(infeasible: list, out: Path) -> None:
-    path = out / "04_predicted_horizon.pdf"
-    if not infeasible:
-        fig, ax = plt.subplots(1, 1, figsize=(8, 3.8))
-        ax.axis("off")
-        ax.text(
-            0.5,
-            0.5,
-            "No infeasible MPC solves recorded in this flight.\n\n"
-            "The full 50-step predicted horizon is only logged to\n"
-            "infeasible.jsonl on non-optimal solves. Extend the logger\n"
-            "to snapshot horizons periodically if you need this figure\n"
-            "on every flight.",
-            ha="center",
-            va="center",
-            fontsize=10,
-            family="monospace",
-        )
-        _save(fig, path)
-        return
-
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 7.5))
-    panels = [
-        ("X reference — forward (m)", 0),
-        ("Y reference — up (m)", 2),
-        ("Z reference — right (m)", 4),
-    ]
-    n = len(infeasible)
-    for i, ev in enumerate(infeasible):
-        ref = np.asarray(ev["ref"], dtype=float)
-        x0 = np.asarray(ev["x0"], dtype=float)
-        steps = np.arange(ref.shape[0])
-        color = plt.cm.viridis(i / max(1, n - 1))
-        label = f"t = {ev['t']:.2f} s  ({ev.get('status', '?')})"
-        for ax, (_, idx) in zip(axes, panels):
-            ax.plot(steps, ref[:, idx], color=color, linewidth=1.0,
-                    label=label if ax is axes[0] else None)
-            ax.plot([0], [x0[idx]], marker="o", color=color, markersize=4)
-    for ax, (ylab, _) in zip(axes, panels):
-        ax.set_ylabel(ylab)
-        _style(ax)
-    axes[-1].set_xlabel("Horizon step (20 ms per step)")
-    axes[0].set_title(f"MPC predicted horizons at non-optimal solves (n = {n})")
-    axes[0].legend(loc="best", fontsize=7)
-    _save(fig, path)
-
-
 def _rms(a: np.ndarray) -> float:
     return float(np.sqrt(np.nanmean(a * a)))
 
 
+def _rms_annotation(ax, value: float, unit: str) -> None:
+    ax.text(
+        0.98,
+        0.95,
+        f"RMS = {value:.3f} {unit}",
+        transform=ax.transAxes,
+        fontsize=9,
+        ha="right",
+        va="top",
+        bbox={"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 2.5},
+    )
+
+
 def plot_tracking_error(csv_data: dict, events: list, out: Path) -> None:
     t = csv_data["t"]
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 7.5))
+    fig = plt.figure(figsize=(15, 9))
+    gs = fig.add_gridspec(3, 3, hspace=0.45, wspace=0.25)
 
-    ax = axes[0]
-    pos_labels = [("e_px", "C0", "X (forward)"), ("e_py", "C1", "Y (up)"), ("e_pz", "C2", "Z (right)")]
-    for col, color, lbl in pos_labels:
-        ax.plot(t, csv_data[col], color=color, linewidth=1.0, label=lbl)
-    ax.set_ylabel("Position error (m)")
-    ax.set_title(
-        "Position error  —  RMS: "
-        f"x = {_rms(csv_data['e_px']):.3f} m,  "
-        f"y = {_rms(csv_data['e_py']):.3f} m,  "
-        f"z = {_rms(csv_data['e_pz']):.3f} m"
-    )
-    ax.legend(loc="upper right", fontsize=8)
-    _draw_event_lines(ax, events)
-    _style(ax)
-
-    ax = axes[1]
-    vel_labels = [("e_vx", "C0", "X (forward)"), ("e_vy", "C1", "Y (up)"), ("e_vz", "C2", "Z (right)")]
-    for col, color, lbl in vel_labels:
-        ax.plot(t, csv_data[col], color=color, linewidth=1.0, label=lbl)
-    ax.set_ylabel("Velocity error (m/s)")
-    ax.set_title(
-        "Velocity error  —  RMS: "
-        f"x = {_rms(csv_data['e_vx']):.3f} m/s,  "
-        f"y = {_rms(csv_data['e_vy']):.3f} m/s,  "
-        f"z = {_rms(csv_data['e_vz']):.3f} m/s"
-    )
-    ax.legend(loc="upper right", fontsize=8)
-    _draw_event_lines(ax, events)
-    _style(ax)
-
-    ax = axes[2]
-    e_yaw_deg = np.degrees(csv_data["e_yaw"])
-    ax.plot(t, e_yaw_deg, color="C3", linewidth=1.0)
-    ax.set_ylabel("Yaw error (deg)")
-    ax.set_title(f"Yaw error  —  RMS = {_rms(e_yaw_deg):.2f}°")
-    _draw_event_lines(ax, events)
-    _style(ax)
-
-    axes[-1].set_xlabel("Time since takeoff (s)")
-    _save(fig, out / "05_tracking_error.pdf")
-
-
-def plot_solver_diagnostics(csv_data: dict, out: Path) -> None:
-    t = csv_data["t"]
-    solve_ms = csv_data["solve_time_ms"]
-    status = list(csv_data["mpc_status"])
-
-    counts: dict[str, int] = {}
-    for s in status:
-        counts[str(s)] = counts.get(str(s), 0) + 1
-    title_counts = ", ".join(
-        f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1])
-    )
-
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4), gridspec_kw={"width_ratios": [2, 1]})
-
-    ax = axes[0]
-    ax.plot(t, solve_ms, color="C5", linewidth=0.9, alpha=0.9)
-    valid = solve_ms[~np.isnan(solve_ms)]
-    p50 = float(np.percentile(valid, 50)) if valid.size else float("nan")
-    p95 = float(np.percentile(valid, 95)) if valid.size else float("nan")
-    p99 = float(np.percentile(valid, 99)) if valid.size else float("nan")
-    ax.axhline(p50, color="0.3", linestyle="--", linewidth=0.8, label=f"Median = {p50:.1f} ms")
-    ax.axhline(p95, color="0.5", linestyle="--", linewidth=0.8, label=f"95th percentile = {p95:.1f} ms")
-    ax.axhline(20.0, color="red", linestyle=":", linewidth=0.8, label="Control period (20 ms)")
-    bad_mask = np.array(
-        [s not in ("optimal", "optimal_inaccurate") for s in status],
-        dtype=bool,
-    )
-    if bad_mask.any():
-        ax.scatter(
-            t[bad_mask],
-            solve_ms[bad_mask],
-            color="red",
-            s=15,
-            zorder=5,
-            label=f"Non-optimal solve (n = {int(bad_mask.sum())})",
-        )
-    ax.set_xlabel("Time since takeoff (s)")
-    ax.set_ylabel("Solve time (ms)")
-    ax.legend(loc="upper right", fontsize=7)
-    _style(ax)
-
-    ax = axes[1]
-    if valid.size:
-        ax.hist(valid, bins=40, color="C5", alpha=0.8)
-    ax.axvline(p50, color="0.3", linestyle="--", linewidth=0.8)
-    ax.axvline(p95, color="0.5", linestyle="--", linewidth=0.8)
-    ax.axvline(20.0, color="red", linestyle=":", linewidth=0.8)
-    ax.set_xlabel("Solve time (ms)")
-    ax.set_ylabel("Count")
-    _style(ax)
-
-    fig.suptitle(f"MPC solver diagnostics — {title_counts}", fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    _save(fig, out / "06_solver_diagnostics.pdf")
-
-
-def plot_actuator_commands(csv_data: dict, events: list, out: Path) -> None:
-    t = csv_data["t"]
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 7))
-
-    axes[0].plot(t, csv_data["roll"], color="C0", linewidth=1.0)
-    axes[0].axhline(15, color="0.5", linestyle=":", linewidth=0.8, label="Tilt limit (±15°)")
-    axes[0].axhline(-15, color="0.5", linestyle=":", linewidth=0.8)
-    axes[0].set_ylabel("Roll command (deg)")
-    axes[0].legend(loc="upper right", fontsize=7)
-
-    axes[1].plot(t, csv_data["pitch"], color="C1", linewidth=1.0)
-    axes[1].axhline(15, color="0.5", linestyle=":", linewidth=0.8)
-    axes[1].axhline(-15, color="0.5", linestyle=":", linewidth=0.8)
-    axes[1].set_ylabel("Pitch command (deg)")
-
-    axes[2].plot(t, csv_data["thrust"], color="C2", linewidth=1.0)
-    axes[2].axhline(65535, color="0.5", linestyle=":", linewidth=0.8, label="PWM maximum (65535)")
-    axes[2].set_ylabel("Thrust command (PWM)")
-    axes[2].legend(loc="upper right", fontsize=7)
-
-    for ax in axes:
+    pos_panels = [
+        ("x-Position Error (m)", "e_px"),
+        ("y-Position Error (m)", "e_py"),
+        ("z-Position Error (m)", "e_pz"),
+    ]
+    for i, (ylab, col) in enumerate(pos_panels):
+        ax = fig.add_subplot(gs[0, i])
+        ax.plot(t, csv_data[col], color="C0", linewidth=1.3)
+        ax.set_ylabel(ylab)
+        ax.set_xlabel("Time (s)")
+        _rms_annotation(ax, _rms(csv_data[col]), "m")
         _draw_event_lines(ax, events)
         _style(ax)
 
-    axes[-1].set_xlabel("Time since takeoff (s)")
-    axes[0].set_title("Actuator commands")
-    _save(fig, out / "07_actuator_commands.pdf")
+    vel_panels = [
+        ("x-Velocity Error (m/s)", "e_vx"),
+        ("y-Velocity Error (m/s)", "e_vy"),
+        ("z-Velocity Error (m/s)", "e_vz"),
+    ]
+    for i, (ylab, col) in enumerate(vel_panels):
+        ax = fig.add_subplot(gs[1, i])
+        ax.plot(t, csv_data[col], color="C0", linewidth=1.3)
+        ax.set_ylabel(ylab)
+        ax.set_xlabel("Time (s)")
+        _rms_annotation(ax, _rms(csv_data[col]), "m/s")
+        _draw_event_lines(ax, events)
+        _style(ax)
+
+    ax = fig.add_subplot(gs[2, :])
+    e_yaw_deg = np.degrees(csv_data["e_yaw"])
+    ax.plot(t, e_yaw_deg, color="C3", linewidth=1.3)
+    ax.set_ylabel("Yaw Error (deg)")
+    ax.set_xlabel("Time (s)")
+    _rms_annotation(ax, _rms(e_yaw_deg), "deg")
+    _draw_event_lines(ax, events)
+    _style(ax)
+
+    _save(fig, out / "04_tracking_error.pdf")
 
 
 def write_summary(csv_data: dict, events: list, infeasible: list, out: Path) -> None:
@@ -449,13 +387,10 @@ def main() -> None:
     plot_position_tracking(csv_data, events, plots_dir)
     plot_control_output(csv_data, events, plots_dir)
     plot_disturbance(csv_data, events, plots_dir)
-    plot_predicted_horizon(infeasible, plots_dir)
     plot_tracking_error(csv_data, events, plots_dir)
-    plot_solver_diagnostics(csv_data, plots_dir)
-    plot_actuator_commands(csv_data, events, plots_dir)
     write_summary(csv_data, events, infeasible, plots_dir)
 
-    print(f"Wrote 7 PDFs and summary.txt to {plots_dir}")
+    print(f"Wrote 4 PDFs and summary.txt to {plots_dir}")
 
 
 if __name__ == "__main__":
