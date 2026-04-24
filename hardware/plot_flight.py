@@ -149,10 +149,10 @@ def plot_position_tracking(csv_data: dict, events: list, out: Path) -> None:
         for ax, (ylab, desired_col, actual_col, pad_col) in zip(row_axes, panels):
             ax.plot(
                 t,
-                csv_data[desired_col],
-                color="C0",
+                csv_data[pad_col],
+                color="C4",
                 linewidth=1.3,
-                label="Quadrotor Desired",
+                label="Platform Ground Truth",
             )
             ax.plot(
                 t,
@@ -163,10 +163,10 @@ def plot_position_tracking(csv_data: dict, events: list, out: Path) -> None:
             )
             ax.plot(
                 t,
-                csv_data[pad_col],
-                color="C4",
-                linewidth=1.3,
-                label="Platform Ground Truth",
+                csv_data[desired_col],
+                color="C0",
+                linewidth=2.0,
+                label="Quadrotor Desired",
             )
             ax.set_ylabel(ylab)
             ax.set_xlabel("Time (s)")
@@ -177,11 +177,14 @@ def plot_position_tracking(csv_data: dict, events: list, out: Path) -> None:
     _draw_row(axes[1], vel_panels)
 
     handles, labels = axes[0, 0].get_legend_handles_labels()
+    legend_order = ["Quadrotor Desired", "Quadrotor Ground Truth", "Platform Ground Truth"]
+    label_to_handle = dict(zip(labels, handles))
+    ordered_handles = [label_to_handle[lbl] for lbl in legend_order]
     fig.legend(
-        handles,
-        labels,
+        ordered_handles,
+        legend_order,
         loc="upper center",
-        ncol=len(labels),
+        ncol=len(legend_order),
         bbox_to_anchor=(0.5, 1.0),
         frameon=False,
         fontsize=10,
