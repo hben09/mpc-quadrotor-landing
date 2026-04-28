@@ -36,7 +36,7 @@ except ImportError as exc:  # pragma: no cover — diagnostic only
 
 DEFAULT_PORT = 12346
 DEFAULT_STALENESS = 1.0    # s — zero linear if no command within this window
-DEFAULT_MAX_LINEAR = 0.5   # m/s
+DEFAULT_MAX_LINEAR = 0.4   # m/s
 CONTROL_DT = 0.05          # 20 Hz actuator loop
 
 
