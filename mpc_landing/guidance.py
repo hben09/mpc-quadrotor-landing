@@ -128,7 +128,7 @@ def landing_reference(
     limo_vel = np.array(limo_state["vel"])
     w = limo_state.get("yaw_rate", 0.0)
 
-    landing_height = limo_pos[1] + 0.05
+    landing_height = limo_pos[1]
     pad_pos = (limo_pos[0], landing_height, limo_pos[2])
     inside_cone = is_in_approach_cone(drone_pos, pad_pos, cone_half_angle_deg)
 
