@@ -32,7 +32,7 @@ class MPCConfig:
     horizon: int = 25  # prediction horizon (N steps = 0.5s at 50Hz)
 
     # State cost weights: [px, vx, py, vy, pz, vz]
-    Q_diag: list = field(default_factory=lambda: [10.0, 1.0, 10.0, 1.0, 10.0, 1.0])
+    Q_diag: list = field(default_factory=lambda: [10.0, 1.75, 10.0, 1.0, 10.0, 1.75])
 
     # Terminal cost weights (larger than Q to incentivize reaching target)
     Qf_diag: list = field(
@@ -40,7 +40,7 @@ class MPCConfig:
     )
 
     # Input cost weights: [ax, ay, az]
-    R_diag: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    R_diag: list = field(default_factory=lambda: [0.75, 1.0, 0.75])
 
     # Lateral acceleration limit (m/s^2) for ax, az.
     # Bounded by the post-MPC pitch/roll clip: a_lat_max = g * tan(MAX_TILT_DEG).

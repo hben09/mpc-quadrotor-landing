@@ -91,7 +91,7 @@ TARGET_SPEED = 0.5  # meters per second (WASD/QE, continuous while held)
 RAMP_DURATION = 1.5
 AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
-TOUCHDOWN_MARGIN = 0.03  # meters above landing pad at which motors auto-cut
+TOUCHDOWN_MARGIN = 0.025  # meters above landing pad at which motors auto-cut
 TOUCHDOWN_RAMP_DURATION = 0.5  # seconds to linearly ramp thrust to 0 after touchdown
 TRANSITION_DURATION = 1.0  # seconds — ramp ref from manual TARGET into autonomous mode (M→T, M→L)
 
@@ -147,9 +147,9 @@ TUNABLE_PARAMS = [
     # (short_name, step, min, max, getter, setter)
     # getter/setter operate on an MPCConfig instance
     ("Qp", 2.0, 1.0, 100.0),  # 1: Q position
-    ("Qv", 0.5, 0.1, 20.0),  # 2: Q velocity
+    ("Qv", 0.25, 0.1, 20.0),  # 2: Q velocity
     ("Qf", 20.0, 10.0, 500.0),  # 3: Qf terminal
-    ("R", 0.5, 0.01, 20.0),  # 4: R effort
+    ("R", 0.25, 0.01, 20.0),  # 4: R effort
     ("a_lat", 0.25, 0.25, 5.0),  # 5: a_max (lateral, ≈ g*tan(MAX_TILT_DEG))
     ("v", 0.25, 0.5, 5.0),  # 6: v_max
 ]
@@ -182,13 +182,14 @@ class ParamTuner:
         if idx == 0:
             c.Q_diag = [val, c.Q_diag[1], val, c.Q_diag[3], val, c.Q_diag[5]]
         elif idx == 1:
+            # Lateral velocity weights only (x, z) — vertical Qv stays at default
             c.Q_diag[1] = val
-            c.Q_diag[3] = val
             c.Q_diag[5] = val
         elif idx == 2:
             c.Qf_diag = [val, val / 10, val, val / 10, val, val / 10]
         elif idx == 3:
-            c.R_diag = [val, val, val]
+            # Lateral effort weights only (ax, az) — vertical R stays at default
+            c.R_diag = [val, c.R_diag[1], val]
         elif idx == 4:
             c.a_max = val
         elif idx == 5:
