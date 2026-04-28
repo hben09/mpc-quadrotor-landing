@@ -89,6 +89,7 @@ AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
 TOUCHDOWN_MARGIN = 0.05  # meters above landing pad at which motors auto-cut
 TOUCHDOWN_RAMP_DURATION = 0.5  # seconds to linearly ramp thrust to 0 after touchdown
+TRANSITION_DURATION = 1.0  # seconds — ramp ref from manual TARGET into autonomous mode (M→T, M→L)
 
 # Pressed-key tracking for smooth target movement
 pressed_keys = set()
@@ -481,6 +482,15 @@ def main():
             listener.stop()
             return
 
+        drone = reader.get_drone()
+        if drone is not None:
+            TARGET[:] = [
+                float(drone.pos[0]),
+                HOVER_ALTITUDE,
+                float(drone.pos[2]),
+            ]
+            TARGET_YAW = float(drone.yaw)
+
         with SafeCommander(cf.commander) as commander:
             try:
                 flight_dir = (
@@ -541,6 +551,8 @@ def main():
                         prev_mode = "M"
                         prev_loop_start = None
                         active_target = list(TARGET)
+                        transition_anchor = None
+                        transition_t0 = None
                         last_thrust = HOVER_PWM
                         while not stop.is_set():
                             loop_start = time.monotonic()
@@ -574,17 +586,18 @@ def main():
 
                             target_rb = reader.get_target()
                             if landing_enabled.is_set() and target_rb is not None:
+                                if prev_mode == "M":
+                                    transition_anchor = list(active_target)
+                                    transition_t0 = time.monotonic()
+                                elif prev_mode == "T":
+                                    transition_anchor = None
+                                    transition_t0 = None
                                 ref = landing_reference(
                                     rigid_body_to_state(drone),
                                     rigid_body_to_state(target_rb),
                                     N,
                                     CONTROL_DT,
                                 )
-                                active_target = [
-                                    float(ref[0, 0]),
-                                    float(ref[0, 2]),
-                                    float(ref[0, 4]),
-                                ]
                                 TARGET_YAW = target_rb.yaw
                                 pad_height = target_rb.pos[1]
                                 inside_cone = is_in_approach_cone(
@@ -637,17 +650,18 @@ def main():
                                     print("*** Motors off ***")
                                     break
                             elif tracking_enabled.is_set() and target_rb is not None:
+                                if prev_mode == "M":
+                                    transition_anchor = list(active_target)
+                                    transition_t0 = time.monotonic()
+                                elif prev_mode in ("L", "L*"):
+                                    transition_anchor = None
+                                    transition_t0 = None
                                 ref = tracking_reference(
                                     rigid_body_to_state(drone),
                                     rigid_body_to_state(target_rb),
                                     N,
                                     CONTROL_DT,
                                 )
-                                active_target = [
-                                    float(ref[0, 0]),
-                                    float(ref[0, 2]),
-                                    float(ref[0, 4]),
-                                ]
                                 TARGET_YAW = target_rb.yaw
                                 mode = "T"
                             else:
@@ -677,8 +691,24 @@ def main():
                                     TARGET[:] = active_target
                                 update_target(CONTROL_DT)
                                 ref = static_reference(TARGET, N, CONTROL_DT)
-                                active_target = list(TARGET)
                                 mode = "M"
+
+                            if mode == "M":
+                                transition_anchor = None
+                                transition_t0 = None
+                            elif transition_t0 is not None and transition_anchor is not None:
+                                elapsed = time.monotonic() - transition_t0
+                                alpha = max(0.0, 1.0 - elapsed / TRANSITION_DURATION)
+                                if alpha > 0.0:
+                                    ref = (
+                                        alpha * static_reference(transition_anchor, N, CONTROL_DT)
+                                        + (1.0 - alpha) * ref
+                                    )
+                                else:
+                                    transition_anchor = None
+                                    transition_t0 = None
+
+                            active_target = [float(ref[0, 0]), float(ref[0, 2]), float(ref[0, 4])]
 
                             if mode != prev_mode:
                                 events.log(
