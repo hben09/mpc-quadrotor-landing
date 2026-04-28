@@ -66,7 +66,11 @@ CONTROL_DT = 1.0 / CONTROL_HZ
 
 HOVER_PWM = 45000
 HOVER_ALTITUDE = 1.0
-MAX_TILT_DEG = 10.0
+MAX_TILT_DEG = 15.0
+# Lateral accel envelope the MPC plans against — kept consistent with the
+# post-MPC tilt clip so the controller never asks for more than the plant
+# can deliver.
+A_LAT_MAX = float(G * np.tan(np.radians(MAX_TILT_DEG)))
 TARGET = [0.0, HOVER_ALTITUDE, 0.0]
 TARGET_YAW = 0.0  # radians, OptiTrack frame (CCW+)
 YAW_SPEED = np.radians(60.0)  # rad/s while Left/Right held
@@ -146,7 +150,7 @@ TUNABLE_PARAMS = [
     ("Qv", 0.5, 0.1, 20.0),  # 2: Q velocity
     ("Qf", 20.0, 10.0, 500.0),  # 3: Qf terminal
     ("R", 0.5, 0.01, 20.0),  # 4: R effort
-    ("a", 0.5, 1.0, 15.0),  # 5: a_max
+    ("a_lat", 0.25, 0.25, 5.0),  # 5: a_max (lateral, ≈ g*tan(MAX_TILT_DEG))
     ("v", 0.25, 0.5, 5.0),  # 6: v_max
 ]
 
@@ -356,7 +360,7 @@ def main():
         cf.commander.send_setpoint(0, 0, 0, 0)
 
         # MPC
-        config = MPCConfig(dt=CONTROL_DT, horizon=50)
+        config = MPCConfig(dt=CONTROL_DT, horizon=50, a_max=A_LAT_MAX)
         mpc = MPCController(config)
         tuner = ParamTuner(config)
         N = config.horizon
@@ -477,7 +481,7 @@ def main():
         print(f"T = toggle tracking of OptiTrack rigid body '{TRACKED_OBJECT_NAME}'")
         print(f"L = toggle autonomous descent onto '{TRACKED_OBJECT_NAME}'")
         print("MPC tuning: 1-6 select, Up/Down adjust")
-        print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_max 6:v_max")
+        print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_lat 6:v_max")
         print("=" * 56)
 
         go.wait()

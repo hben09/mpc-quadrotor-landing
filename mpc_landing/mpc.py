@@ -42,8 +42,15 @@ class MPCConfig:
     # Input cost weights: [ax, ay, az]
     R_diag: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
 
-    # Acceleration limits (m/s^2)
-    a_max: float = 15.0
+    # Lateral acceleration limit (m/s^2) for ax, az.
+    # Bounded by the post-MPC pitch/roll clip: a_lat_max = g * tan(MAX_TILT_DEG).
+    # Default ≈ g*tan(10°). Caller (e.g. mpc_pilot.py) should override to match
+    # its actual MAX_TILT_DEG so the MPC plans within the achievable envelope.
+    a_max: float = 1.73
+
+    # Vertical acceleration headroom around hover (m/s^2) for ay.
+    # Bounded by thrust: at HOVER_PWM=45000, thrust cap 60000 → +3.27 m/s² up.
+    a_vert_max: float = 3.0
 
     # Velocity limits (m/s) — set None to disable
     v_max: float = 2.0
@@ -124,9 +131,14 @@ class MPCController:
                 == self.A @ self.x_var[k] + self.B @ self.u_var[k] + self.g_vec
             )
 
-            # Acceleration limits
-            constraints.append(self.u_var[k] <= self.cfg.a_max)
-            constraints.append(self.u_var[k] >= -self.cfg.a_max)
+            # Lateral acceleration limits (tilt-bounded): ax, az
+            constraints.append(self.u_var[k, 0] <= self.cfg.a_max)
+            constraints.append(self.u_var[k, 0] >= -self.cfg.a_max)
+            constraints.append(self.u_var[k, 2] <= self.cfg.a_max)
+            constraints.append(self.u_var[k, 2] >= -self.cfg.a_max)
+            # Vertical acceleration limits (thrust-bounded around hover): ay
+            constraints.append(self.u_var[k, 1] <= self.u_eq[1] + self.cfg.a_vert_max)
+            constraints.append(self.u_var[k, 1] >= self.u_eq[1] - self.cfg.a_vert_max)
 
             # Velocity limits
             if self.cfg.v_max is not None:
