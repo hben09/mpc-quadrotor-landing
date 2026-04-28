@@ -298,7 +298,11 @@ def on_release(key):
 
 
 def update_target(dt):
-    """Move TARGET (and TARGET_YAW) continuously based on held keys."""
+    """Move TARGET (and TARGET_YAW) continuously based on held keys.
+
+    Returns the current commanded yaw rate (rad/s, OptiTrack CCW+) so callers
+    can feed it forward into the yaw controller.
+    """
     global TARGET_YAW
     with keys_lock:
         keys = set(pressed_keys)
@@ -315,11 +319,15 @@ def update_target(dt):
         TARGET[1] = min(TARGET[1] + step, 2.0)
     if "z" in keys:
         TARGET[1] = max(TARGET[1] - step, 0.3)
+    yaw_rate = 0.0
     if "q" in keys:
         TARGET_YAW += YAW_SPEED * dt  # q = left = CCW = + in OptiTrack
+        yaw_rate += YAW_SPEED
     if "e" in keys:
         TARGET_YAW -= YAW_SPEED * dt  # e = right = CW
+        yaw_rate -= YAW_SPEED
     TARGET_YAW = wrap_to_pi(TARGET_YAW)
+    return yaw_rate
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +593,7 @@ def main():
                             cone_payload = {"apex": None}
 
                             target_rb = reader.get_target()
+                            target_yaw_rate = 0.0
                             if landing_enabled.is_set() and target_rb is not None:
                                 if prev_mode == "M":
                                     transition_anchor = list(active_target)
@@ -599,6 +608,7 @@ def main():
                                     CONTROL_DT,
                                 )
                                 TARGET_YAW = target_rb.yaw
+                                target_yaw_rate = target_rb.yaw_rate
                                 pad_height = target_rb.pos[1]
                                 inside_cone = is_in_approach_cone(
                                     drone.pos,
@@ -663,6 +673,7 @@ def main():
                                     CONTROL_DT,
                                 )
                                 TARGET_YAW = target_rb.yaw
+                                target_yaw_rate = target_rb.yaw_rate
                                 mode = "T"
                             else:
                                 if landing_enabled.is_set() and target_rb is None:
@@ -689,7 +700,7 @@ def main():
                                     )
                                 if prev_mode in ("T", "L"):
                                     TARGET[:] = active_target
-                                update_target(CONTROL_DT)
+                                target_yaw_rate = update_target(CONTROL_DT)
                                 ref = static_reference(TARGET, N, CONTROL_DT)
                                 mode = "M"
 
@@ -726,7 +737,9 @@ def main():
                             roll, pitch, thrust = mpc_accel_to_cflib_setpoint(
                                 ax, ay, az, yaw
                             )
-                            yawrate = compute_yawrate(yaw, TARGET_YAW)
+                            yawrate = compute_yawrate(
+                                yaw, TARGET_YAW, target_yaw_rate=target_yaw_rate
+                            )
                             commander.send_setpoint(roll, pitch, yawrate, thrust)
                             last_thrust = thrust
 
