@@ -93,7 +93,7 @@ AIRBORNE_ALT = 0.3
 MIN_POSE_COUNT = 3
 TOUCHDOWN_MARGIN = 0.025  # meters above landing pad at which motors auto-cut
 TOUCHDOWN_RAMP_DURATION = 0.5  # seconds to linearly ramp thrust to 0 after touchdown
-TRANSITION_DURATION = 1.0  # seconds — ramp ref from manual TARGET into autonomous mode (M→T, M→L)
+TRANSITION_DURATION = 2.0  # seconds — ramp ref from manual TARGET into autonomous mode (M→T, M→L)
 
 # Pressed-key tracking for smooth target movement
 pressed_keys = set()
@@ -422,10 +422,6 @@ def main():
             if key == keyboard.Key.esc:
                 stop.set()
                 go.set()  # unblock wait
-            if key == keyboard.Key.up:
-                tuner.adjust(+1)
-            if key == keyboard.Key.down:
-                tuner.adjust(-1)
             # Track held keys for smooth target movement and one-shot toggles
             with keys_lock:
                 try:
@@ -434,6 +430,10 @@ def main():
                         is_new_press = c not in pressed_keys
                         if c in "123456":
                             tuner.select(int(c) - 1)
+                        if c == "=":
+                            tuner.adjust(+1)
+                        elif c == "-":
+                            tuner.adjust(-1)
                         if c == "t" and is_new_press:
                             if tracking_enabled.is_set():
                                 tracking_enabled.clear()
@@ -481,7 +481,7 @@ def main():
         print("WASD = move XZ, Z/X = altitude, Q/E = yaw target (hold)")
         print(f"T = toggle tracking of OptiTrack rigid body '{TRACKED_OBJECT_NAME}'")
         print(f"L = toggle autonomous descent onto '{TRACKED_OBJECT_NAME}'")
-        print("MPC tuning: 1-6 select, Up/Down adjust")
+        print("MPC tuning: 1-6 select, =/- adjust")
         print("  1:Q_pos 2:Q_vel 3:Qf 4:R 5:a_lat 6:v_max")
         print("=" * 56)
 
