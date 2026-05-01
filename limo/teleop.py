@@ -1,11 +1,11 @@
 """Keyboard teleoperation for a RASTIC LIMO.
 
-W/S = forward/back | A/D = turn left/right | Space = stop
+↑/↓ = forward/back | ←/→ = turn left/right | . = stop
 C   = toggle circle mode   (fixed-radius loop)
 F   = toggle figure-8 mode (sinusoidal steering, same lobe size as circle)
 Esc = quit
 
-Any WASD or Space input cancels autonomous modes.
+Any arrow or . input cancels autonomous modes.
 """
 
 import argparse
@@ -76,7 +76,11 @@ def _compute_command(circle_diameter: float, wheelbase: float) -> tuple[float, f
     with _keys_lock:
         keys = set(_keys)
 
-    manual_pressed = bool(keys & {"w", "s", "a", "d", keyboard.Key.space})
+    manual_pressed = bool(keys & {
+        keyboard.Key.up, keyboard.Key.down,
+        keyboard.Key.left, keyboard.Key.right,
+        ".",
+    })
 
     # Any manual input cancels autonomous modes.
     if manual_pressed:
@@ -105,18 +109,18 @@ def _compute_command(circle_diameter: float, wheelbase: float) -> tuple[float, f
         steering = max_steer if phase < 1.0 else -max_steer
         return MAX_LINEAR_VEL, steering, "FIG-8"
 
-    if keyboard.Key.space in keys:
+    if "." in keys:
         return 0.0, 0.0, "MANUAL"
 
     linear = 0.0
     steering = 0.0
-    if "w" in keys:
+    if keyboard.Key.up in keys:
         linear += MAX_LINEAR_VEL
-    if "s" in keys:
+    if keyboard.Key.down in keys:
         linear -= MAX_LINEAR_VEL
-    if "a" in keys:
+    if keyboard.Key.left in keys:
         steering += MAX_STEERING
-    if "d" in keys:
+    if keyboard.Key.right in keys:
         steering -= MAX_STEERING
     return linear, steering, "MANUAL"
 
@@ -146,7 +150,7 @@ def main() -> None:
     pose.connect()
 
     print(f"LIMO {args.limo} @ {ip}:{args.port}  |  pose topic: {topic}")
-    print(f"W/S = fwd/back | A/D = turn | Space = stop")
+    print(f"↑/↓ = fwd/back | ←/→ = turn | . = stop")
     t_loop = 2.0 * math.pi * (args.circle_diameter / 2.0) / MAX_LINEAR_VEL
     print(f"C = circle ({args.circle_diameter:.1f} m dia) | "
           f"F = figure-8 ({2 * t_loop:.1f}s/cycle) | Esc = quit")
